@@ -2,14 +2,15 @@ import Redis from 'ioredis';
 import { env } from './env.js';
 import { logger } from '../utils/logger.js';
 
-// Parsed once, defensively: if REDIS_URL is ever malformed, TLS servername
-// inference below just falls back to undefined (Node/ioredis's own
-// default) rather than throwing at import time.
-function parseRedisHost(url) {
+// Parsed once, defensively: if REDIS_URL is ever malformed, this whole
+// module falls back to sane defaults (no forced TLS, inferred servername)
+// rather than throwing at import time.
+function parseRedisUrl(url) {
   try {
-    return new URL(url).hostname || undefined;
+    const parsed = new URL(url);
+    return { hostname: parsed.hostname || undefined, isSecure: parsed.protocol === 'rediss:' };
   } catch {
-    return undefined;
+    return { hostname: undefined, isSecure: false };
   }
 }
 
@@ -27,6 +28,7 @@ function parseRedisHost(url) {
 let client = null;
 
 export function getRedisConnectionOptions() {
+  const redisUrlInfo = parseRedisUrl(env.redisUrl);
   return {
     // Required by BullMQ: it manages retries at the queue/job level and
     // needs the underlying client to never give up on a single request.
@@ -55,12 +57,21 @@ export function getRedisConnectionOptions() {
     // Upstash's own general recommendation for platforms like Render.
     family: 4,
 
-    // rediss:// already tells ioredis to use TLS; servername is set
-    // explicitly (derived from the real REDIS_URL host, not hardcoded)
-    // rather than left to inference, so SNI is never ambiguous against a
-    // multi-tenant, proxy-fronted provider like Upstash, where the proxy
-    // uses SNI to route the TLS connection to the right backend.
-    tls: { servername: parseRedisHost(env.redisUrl) },
+    // Conditional on the URL's actual scheme — NOT unconditionally forced
+    // on. A hosted provider reached over the public internet (Upstash,
+    // Redis Cloud, ...) uses `rediss://` and needs TLS; a same-network
+    // internal Redis (e.g. Render's own Key Value service, or a local
+    // `redis://127.0.0.1`) uses plain `redis://` and does NOT speak
+    // TLS at all — passing a truthy `tls` option to ioredis forces a TLS
+    // handshake regardless of scheme, which would make a plaintext
+    // connection fail outright. Deriving this from the real REDIS_URL
+    // means the exact same code works for both without a code change when
+    // REDIS_URL itself changes. When TLS is on, servername is set
+    // explicitly (from the real host, not hardcoded) rather than left to
+    // inference, so SNI is never ambiguous against a multi-tenant,
+    // proxy-fronted provider like Upstash, where the proxy uses SNI to
+    // route the TLS connection to the right backend.
+    ...(redisUrlInfo.isSecure ? { tls: { servername: redisUrlInfo.hostname } } : {}),
 
     // A cross-region TLS handshake (Render's region <-> Upstash's Oregon
     // region) is slower than the same-region/localhost case ioredis's
