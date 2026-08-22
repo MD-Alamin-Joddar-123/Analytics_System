@@ -28,6 +28,19 @@ export const defaultJobOptions = {
 // application-level pre-check — refuses to create a second job for the
 // same (websiteId, eventId), because BullMQ treats adding a job with an
 // already-existing jobId as a no-op rather than creating a duplicate.
+//
+// NOT a colon-delimited join: BullMQ's Job.validateOptions rejects any
+// custom jobId that contains exactly one ":" (reserved for its own
+// internal repeatable-job id format, which uses exactly two) — see
+// node_modules/bullmq/dist/cjs/classes/job.js. A previous version of this
+// function used `${websiteId}:${eventId}`, which produces exactly one and
+// was therefore rejected on EVERY real call, unconditionally — with the
+// queue itself always mocked in tests, nothing here ever exercised real
+// BullMQ job-id validation, so this went undetected until a real
+// (unmocked) queue actually tried to add a job. Uniqueness doesn't depend
+// on the delimiter itself being unambiguous — websiteId is always a fixed
+// 16-character id (see utils/websiteId.js), so the boundary is
+// unambiguous regardless of what eventId contains.
 export function buildEventJobId(websiteId, eventId) {
-  return `${websiteId}:${eventId}`;
+  return `${websiteId}_${eventId}`;
 }

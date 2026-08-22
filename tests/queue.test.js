@@ -8,11 +8,43 @@ describe('Queue configuration', () => {
     assert.equal(EVENT_QUEUE_NAME, 'analytics-events');
   });
 
-  test('job deduplication id is deterministic: websiteId:eventId', () => {
-    assert.equal(buildEventJobId('site-a', 'evt-1'), 'site-a:evt-1');
+  test('job deduplication id is deterministic: websiteId_eventId', () => {
+    assert.equal(buildEventJobId('site-a', 'evt-1'), 'site-a_evt-1');
     assert.equal(buildEventJobId('site-a', 'evt-1'), buildEventJobId('site-a', 'evt-1'));
     assert.notEqual(buildEventJobId('site-a', 'evt-1'), buildEventJobId('site-b', 'evt-1'));
     assert.notEqual(buildEventJobId('site-a', 'evt-1'), buildEventJobId('site-a', 'evt-2'));
+  });
+
+  // A real, previously-shipped bug: `${websiteId}:${eventId}` (exactly one
+  // colon) is REJECTED by BullMQ's own Job.validateOptions — it only
+  // special-cases 0 or exactly 2 colons (reserved for its internal
+  // repeatable-job id format). Every FakeQueue-based test below is
+  // deliberately blind to this, by design (it never touches real BullMQ),
+  // which is exactly how this shipped undetected — the queue is ALSO
+  // always mocked at the eventQueueService boundary in every collect.*
+  // test. This test exercises BullMQ's REAL Job validation directly
+  // (proven to run synchronously, before any Redis I/O — see the comment
+  // below) specifically so this class of bug can't silently return.
+  test('the real jobId format is never rejected by BullMQ\'s own Job validation (regression)', async () => {
+    const { Queue } = await import('bullmq');
+    // A connection target that's guaranteed unreachable (port 1) with no
+    // retries — jobId validation happens BEFORE any connection attempt, so
+    // this test never needs live Redis; it only needs to distinguish
+    // "rejected by validation" from "failed to connect" (expected here).
+    const queue = new Queue('validation-only-test-queue', {
+      connection: { host: '127.0.0.1', port: 1, lazyConnect: true, maxRetriesPerRequest: 0, retryStrategy: () => null },
+    });
+    try {
+      await assert.rejects(
+        () => queue.add('process-event', {}, { jobId: buildEventJobId('a1b2c3d4e5f60718', 'evt-1') }),
+        (error) => {
+          assert.notEqual(error.message, 'Custom Id cannot contain :', 'buildEventJobId must never produce a jobId BullMQ rejects');
+          return true; // any OTHER rejection (a connection error, expected here) is fine
+        }
+      );
+    } finally {
+      await queue.close();
+    }
   });
 
   test('retry attempts are configurable via QUEUE_ATTEMPTS, not hard-coded', () => {
@@ -70,7 +102,7 @@ describe('Job creation and deduplication (simulated queue)', () => {
     const job = queue.add('process-event', { eventObjectId: 'obj-1', websiteId: 'site-a', eventId: 'evt-1' }, { jobId });
 
     assert.equal(queue.jobs.size, 1);
-    assert.equal(job.id, 'site-a:evt-1');
+    assert.equal(job.id, 'site-a_evt-1');
     assert.equal(job.data.eventObjectId, 'obj-1');
   });
 
