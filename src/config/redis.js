@@ -89,10 +89,25 @@ export function getRedisConnection() {
   if (!client) {
     client = new Redis(env.redisUrl, getRedisConnectionOptions());
     client.on('error', (error) => {
-      logger.error('redis_connection_error', { message: error.message });
+      logger.error('redis_connection_error', { message: error.message, code: error.code, name: error.name });
     });
-    client.on('connect', () => logger.info('Redis connected'));
-    client.on('close', () => logger.warn('Redis connection closed'));
+    // Temporary, deliberately verbose diagnostic logging (Render deploy
+    // showed a repeating connect -> close cycle with NO error event at
+    // all, which an identical client/URL/options combination does not
+    // reproduce from outside Render — see the investigation in this
+    // file's git history/PR discussion). `close`'s `hadError` argument and
+    // the actual remote address the socket connected to (confirms whether
+    // `family: 4` is actually being honored on Render's network) are the
+    // two things that couldn't be observed without this. Safe to trim
+    // back to the plain connect/close lines once the cause is confirmed.
+    client.on('connect', () => {
+      const remote = client.stream ? `${client.stream.remoteAddress}:${client.stream.remotePort}` : 'unknown';
+      logger.info('Redis connected', { remote });
+    });
+    client.on('ready', () => logger.info('Redis ready'));
+    client.on('close', (hadError) => logger.warn('Redis connection closed', { hadError }));
+    client.on('reconnecting', (delay) => logger.warn('Redis reconnecting', { delay }));
+    client.on('end', () => logger.warn('Redis connection ended (no more reconnects)'));
   }
   return client;
 }
