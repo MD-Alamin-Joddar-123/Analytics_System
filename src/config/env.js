@@ -29,6 +29,14 @@ export const env = Object.freeze({
   // hard-coded, per §3/§9/§17.
   redisUrl: process.env.REDIS_URL || 'redis://127.0.0.1:6379',
   workerConcurrency: Number(process.env.WORKER_CONCURRENCY) || 5,
+  // When true, the API process ALSO runs the event worker in-process
+  // instead of requiring a separate worker process (see src/server.js).
+  // Opt-in and default-false on purpose: the separate-process deployment
+  // (`npm run start:worker`) remains the default and the better choice
+  // whenever the hosting plan allows it. Explicitly parsed as the string
+  // 'true' rather than Boolean(...) — otherwise any non-empty value,
+  // including the literal string "false", would enable it.
+  embedWorker: process.env.EMBED_WORKER === 'true',
   queueAttempts: Number(process.env.QUEUE_ATTEMPTS) || 5,
   // Base delay (ms) for exponential backoff between retries: attempt N
   // waits roughly QUEUE_BACKOFF * 2^(N-1) — see src/config/queue.js.

@@ -54,6 +54,14 @@ const websiteSchema = new mongoose.Schema(
   baseSchemaOptions
 );
 
+// Declared explicitly here, NOT only via the field-level `unique: true`
+// above. Migration 001 found this index missing from a real database (the
+// collection predated this schema and its indexes were never synced), which
+// silently removed the collision guarantee website.service.js relies on —
+// stating it alongside the other indexes makes it visible in the one place
+// someone reviewing this model's indexes actually looks.
+websiteSchema.index({ websiteId: 1 }, { unique: true });
+
 // Supports "list my websites, newest first" (GET /api/websites) and
 // "list my websites filtered by status".
 websiteSchema.index({ ownerId: 1, createdAt: -1 });
