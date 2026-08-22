@@ -2,6 +2,17 @@ import Redis from 'ioredis';
 import { env } from './env.js';
 import { logger } from '../utils/logger.js';
 
+// Parsed once, defensively: if REDIS_URL is ever malformed, TLS servername
+// inference below just falls back to undefined (Node/ioredis's own
+// default) rather than throwing at import time.
+function parseRedisHost(url) {
+  try {
+    return new URL(url).hostname || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // Single, lazily-constructed, reusable Redis connection (§4: "do not
 // create multiple unnecessary Redis connections") shared by the event
 // queue producer (src/queues/event.queue.js) and health checks. Never
@@ -20,30 +31,36 @@ export function getRedisConnectionOptions() {
     // Required by BullMQ: it manages retries at the queue/job level and
     // needs the underlying client to never give up on a single request.
     maxRetriesPerRequest: null,
-    enableReadyCheck: true,
+
+    // false, NOT true — this is the actual fix for the observed symptom
+    // (repeating "connect" -> "close" within milliseconds, no error
+    // event, cycling on retryStrategy's cadence forever). A `true` ready
+    // check makes ioredis send an INFO command immediately after connect
+    // and tears the connection down if that exchange doesn't behave the
+    // way it expects — which is exactly what happens against Upstash's
+    // free-tier proxy. The TLS handshake itself was never the problem
+    // (the "connect" log line firing proves it succeeds every time); the
+    // failure is entirely in this post-connect handshake. This is also
+    // BullMQ's own documented recommendation for a connection it doesn't
+    // own the lifecycle of.
+    enableReadyCheck: false,
     lazyConnect: true,
 
-    // Hosted-Redis-over-TLS-across-regions stability options (added after
-    // a real connect -> close -> reconnect loop against Upstash from
-    // Render — the cycle repeated on exactly retryStrategy's 3s cap,
-    // meaning the connection kept SUCCEEDING and then being reset almost
-    // immediately, not failing to establish at all):
+    // Hosted-Redis-over-TLS-across-regions stability options:
 
     // Node resolves a hostname to both an A and AAAA record and, by
-    // default, may pick the IPv6 address. Some IPv6 paths between a host
-    // like Render and a provider's edge/proxy (Upstash included) complete
-    // the TCP+TLS handshake but then get reset moments later — invisible
-    // to ioredis as anything other than "connected, then closed" on
-    // repeat. Forcing IPv4 avoids that route entirely; this is Upstash's
-    // own documented recommendation for exactly this symptom.
+    // default, may pick the IPv6 address. Kept as defensive insurance
+    // against IPv6 route flakiness even though it wasn't the actual cause
+    // here (TLS connects fine either way) — forcing IPv4 is still
+    // Upstash's own general recommendation for platforms like Render.
     family: 4,
 
-    // rediss:// already tells ioredis to use TLS, but an explicit object
-    // (even empty) doesn't depend on that URL-parsing inference alone —
-    // cheap insurance against a future REDIS_URL pasted without the extra
-    // "s", which would otherwise silently attempt a plaintext connection
-    // Upstash simply refuses.
-    tls: {},
+    // rediss:// already tells ioredis to use TLS; servername is set
+    // explicitly (derived from the real REDIS_URL host, not hardcoded)
+    // rather than left to inference, so SNI is never ambiguous against a
+    // multi-tenant, proxy-fronted provider like Upstash, where the proxy
+    // uses SNI to route the TLS connection to the right backend.
+    tls: { servername: parseRedisHost(env.redisUrl) },
 
     // A cross-region TLS handshake (Render's region <-> Upstash's Oregon
     // region) is slower than the same-region/localhost case ioredis's
