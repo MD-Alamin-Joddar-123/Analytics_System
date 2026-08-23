@@ -54,13 +54,15 @@ const websiteSchema = new mongoose.Schema(
   baseSchemaOptions
 );
 
-// Declared explicitly here, NOT only via the field-level `unique: true`
-// above. Migration 001 found this index missing from a real database (the
-// collection predated this schema and its indexes were never synced), which
-// silently removed the collision guarantee website.service.js relies on —
-// stating it alongside the other indexes makes it visible in the one place
-// someone reviewing this model's indexes actually looks.
-websiteSchema.index({ websiteId: 1 }, { unique: true });
+// NOTE: the unique index on `websiteId` is created by the field-level
+// `unique: true` above — deliberately NOT restated as a schema.index() call
+// here, which would be a duplicate declaration and makes Mongoose log
+// "Duplicate schema index on {websiteId:1}" on every boot. Worth knowing:
+// migration 001 found that index genuinely missing from a live database
+// (the collection predated this schema and its indexes were never synced),
+// which had silently removed the collision guarantee website.service.js
+// relies on — declaring it is not the same as it existing in a given
+// database. See migrations/001-fix-website-indexes.mjs.
 
 // Supports "list my websites, newest first" (GET /api/websites) and
 // "list my websites filtered by status".
