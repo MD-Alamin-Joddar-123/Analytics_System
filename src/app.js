@@ -49,11 +49,43 @@ export function createApp() {
   // privileged, credentialed action for a hostile page to ride in on.
   // `credentials: false` is explicit so this is never accidentally
   // combined with a wildcard-plus-credentials misconfiguration.
+  // The body parser deliberately accepts `text/plain` IN ADDITION to
+  // `application/json`, because the browser transport that actually
+  // delivers these events cannot safely use an application/json body.
+  //
+  // navigator.sendBeacon() — the only transport that reliably survives page
+  // unload, and therefore the SDK's primary one — always sends with
+  // credentials mode "include". A Blob typed `application/json` is NOT a
+  // CORS-safelisted content type, so it forces a PREFLIGHT; a credentialed
+  // preflight requires `Access-Control-Allow-Credentials: true`, which this
+  // endpoint deliberately does not send (see the credentials:false
+  // rationale above). Chrome's exact rejection:
+  //
+  //   "Response to preflight request doesn't pass access control check:
+  //    The value of the 'Access-Control-Allow-Credentials' header in the
+  //    response is '' which must be 'true' when the request's credentials
+  //    mode is 'include'."
+  //
+  // The result was a total, SILENT delivery failure: sendBeacon() returns
+  // true (meaning "queued"), so the SDK believed every event was sent while
+  // the browser discarded all of them before the request left the machine.
+  // Server-side testing with curl never reproduced it, because curl does
+  // not enforce CORS.
+  //
+  // `text/plain` IS CORS-safelisted, so the beacon becomes a SIMPLE request:
+  // no preflight, and therefore no credentials negotiation to fail. The
+  // browser sends it regardless of the response's CORS headers (CORS only
+  // blocks *reading* a simple request's response, which a fire-and-forget
+  // beacon never does). The body is still JSON — only the declared
+  // Content-Type differs — so the validator and every downstream layer are
+  // completely unchanged. This is the same approach other privacy-focused
+  // analytics SDKs use, and it keeps this endpoint cookie-free rather than
+  // "fixing" the preflight by enabling credentials for arbitrary origins.
   app.use(
     '/api/collect',
     helmet(),
     cors({ origin: true, credentials: false }),
-    express.json({ limit: COLLECT_BODY_LIMIT }),
+    express.json({ limit: COLLECT_BODY_LIMIT, type: ['application/json', 'text/plain'] }),
     requestLogger,
     collectRoutes
   );

@@ -62,6 +62,63 @@ describe('POST /api/collect — security', () => {
     assert.equal(res.headers.get('access-control-allow-credentials'), null);
   });
 
+  // --- Browser transport (sendBeacon) regression ------------------------
+  // navigator.sendBeacon always sends with credentials mode "include". An
+  // `application/json` Blob is not a CORS-safelisted content type, so it
+  // forces a preflight, and a credentialed preflight requires
+  // `Access-Control-Allow-Credentials: true` — which this endpoint
+  // deliberately never sends (asserted in the test above). The result was
+  // a total, SILENT delivery failure in real browsers: sendBeacon returned
+  // true ("queued") while Chrome discarded every event before it left the
+  // machine, so the dashboard showed "No events found" while server-side
+  // curl testing looked perfectly healthy (curl does not enforce CORS).
+  //
+  // The SDK therefore sends the beacon as `text/plain` (CORS-safelisted →
+  // simple request → no preflight). The body is still JSON. This test
+  // locks in the server half of that contract: if the body parser stops
+  // accepting text/plain, every browser event 400s and tracking silently
+  // dies again.
+  test('accepts a text/plain body (the CORS-safelisted content type sendBeacon must use)', async (t) => {
+    mockActiveWebsite(t);
+    t.mock.method(eventRepository, 'create', async (doc) => ({ ...doc, _id: 'x' }));
+
+    const res = await fetch(`${baseUrl}/api/collect`, {
+      method: 'POST',
+      // Exactly what navigator.sendBeacon sets for a text/plain Blob.
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8', Origin: 'https://some-customer-store.example' },
+      body: JSON.stringify({ websiteId: WEBSITE_ID, event: 'page_view', url: 'https://shop.example/', path: '/' }),
+    });
+
+    assert.equal(res.status, 202);
+    const body = await res.json();
+    assert.equal(body.data.accepted, true);
+  });
+
+  test('a text/plain body is parsed identically to an application/json one', async (t) => {
+    mockActiveWebsite(t);
+    let captured;
+    t.mock.method(eventRepository, 'create', async (doc) => {
+      captured = doc;
+      return { ...doc, _id: 'x' };
+    });
+
+    await fetch(`${baseUrl}/api/collect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify({
+        websiteId: WEBSITE_ID,
+        event: 'product_view',
+        anonymousId: 'anon-tp',
+        sessionId: 'sess-tp',
+        data: { productId: 'p1', price: 10, currency: 'USD' },
+      }),
+    });
+
+    assert.equal(captured.eventName, 'product_view');
+    assert.equal(captured.anonymousId, 'anon-tp');
+    assert.equal(captured.data.productId, 'p1');
+  });
+
   test('rejects a malformed (non-JSON) request body', async (t) => {
     mockActiveWebsite(t);
     const res = await fetch(`${baseUrl}/api/collect`, {
