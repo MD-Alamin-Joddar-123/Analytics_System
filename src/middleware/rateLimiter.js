@@ -62,3 +62,23 @@ export function collectRateLimiter(req, res, next) {
   }
   baseCollectLimiter(req, res, next);
 }
+
+// Tracking config Auto Detect makes a real outbound network request per
+// call (src/utils/ssrfSafeFetch.js) and is exactly the kind of endpoint
+// that would otherwise double as a port-scanning/SSRF-probing oracle for a
+// compromised-but-authenticated account — tighter than the collector
+// limiter above, and keyed by user id rather than IP since this route is
+// always authenticated (a stable per-account key beats per-IP here).
+const baseDetectLimiter = createInMemoryRateLimiter({
+  windowMs: 60_000,
+  max: 10,
+  keyGenerator: (req) => req.user?.id ?? req.ip,
+});
+
+export function detectRateLimiter(req, res, next) {
+  if (env.isTest) {
+    next();
+    return;
+  }
+  baseDetectLimiter(req, res, next);
+}

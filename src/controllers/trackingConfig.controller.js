@@ -1,4 +1,5 @@
 import { trackingConfigService } from '../services/trackingConfig/trackingConfig.service.js';
+import { trackingConfigDetectionService } from '../services/trackingConfig/trackingConfigDetection.service.js';
 import { sendSuccess } from '../utils/apiResponse.js';
 
 // GET /api/config/:websiteId — public, called cross-origin by the SDK
@@ -31,6 +32,20 @@ export async function saveConfig(req, res, next) {
   try {
     const config = await trackingConfigService.saveConfig(req.website, req.validated);
     sendSuccess(res, { config });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// POST /api/config/:websiteId/detect — authenticated, same ownership chain
+// as saveConfig above. Fetches the supplied product/order URLs server-side
+// and returns a best-guess config for the dashboard to review; it never
+// saves anything itself — Save Configuration is the existing, unchanged
+// PUT/POST flow above, reused as-is.
+export async function detectConfig(req, res, next) {
+  try {
+    const result = await trackingConfigDetectionService.detectConfig(req.website, req.validated);
+    sendSuccess(res, result);
   } catch (error) {
     next(error);
   }

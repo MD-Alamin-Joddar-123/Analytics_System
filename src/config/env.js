@@ -41,6 +41,13 @@ export const env = Object.freeze({
   // Base delay (ms) for exponential backoff between retries: attempt N
   // waits roughly QUEUE_BACKOFF * 2^(N-1) — see src/config/queue.js.
   queueBackoffDelayMs: Number(process.env.QUEUE_BACKOFF) || 1000,
+  // Tracking config Auto Detect: fetches a customer-supplied product/order
+  // URL server-side (src/utils/ssrfSafeFetch.js) to guess selectors. These
+  // bound that fetch — it only ever needs a page's markup, not a full
+  // asset-laden load, and must never hang a request indefinitely.
+  detectFetchTimeoutMs: Number(process.env.DETECT_FETCH_TIMEOUT_MS) || 8000,
+  detectMaxRedirects: Number(process.env.DETECT_MAX_REDIRECTS) || 3,
+  detectMaxResponseBytes: Number(process.env.DETECT_MAX_RESPONSE_BYTES) || 2 * 1024 * 1024,
   isProduction: process.env.NODE_ENV === 'production',
   isDevelopment: (process.env.NODE_ENV || 'development') === 'development',
   isTest: process.env.NODE_ENV === 'test',

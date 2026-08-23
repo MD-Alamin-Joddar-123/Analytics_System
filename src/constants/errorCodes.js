@@ -51,4 +51,24 @@ export const ErrorCodes = Object.freeze({
   INVALID_EVENT_TYPE_FILTER: 'INVALID_EVENT_TYPE_FILTER',
   // Tracking config (dashboard-driven, zero-template-change detection)
   TRACKING_CONFIG_NOT_FOUND: 'TRACKING_CONFIG_NOT_FOUND',
+  // Tracking config Auto Detect (server-side URL fetch + heuristic
+  // selector detection)
+  DETECT_NO_URL_PROVIDED: 'DETECT_NO_URL_PROVIDED',
+  DETECT_INVALID_URL: 'DETECT_INVALID_URL',
+  DETECT_URL_BLOCKED: 'DETECT_URL_BLOCKED',
+  DETECT_URL_UNREACHABLE: 'DETECT_URL_UNREACHABLE',
+  DETECT_URL_TIMEOUT: 'DETECT_URL_TIMEOUT',
+  DETECT_RESPONSE_TOO_LARGE: 'DETECT_RESPONSE_TOO_LARGE',
+  DETECT_TOO_MANY_REDIRECTS: 'DETECT_TOO_MANY_REDIRECTS',
+  DETECT_UNSUPPORTED_CONTENT_TYPE: 'DETECT_UNSUPPORTED_CONTENT_TYPE',
+  DETECT_BOTH_URLS_FAILED: 'DETECT_BOTH_URLS_FAILED',
+  // This one IS a real ApiError code (validateDetectBody rejects the
+  // request outright, before any fetch) — unlike the page-CONTENT
+  // classification reasons ('listing_page'/'login_required'/
+  // 'js_rendered_empty'/'order_signals_missing'), which never become an
+  // HTTP-level error at all: detectOneSide (trackingConfigDetection.service.js)
+  // converts those into a plain `{ reason, message }` object embedded in a
+  // normal 200 response (productError/orderError), by design, since a
+  // classification failure on ONE side must never fail the whole request.
+  DETECT_PRODUCT_URL_LOOKS_LIKE_LISTING: 'DETECT_PRODUCT_URL_LOOKS_LIKE_LISTING',
 });
