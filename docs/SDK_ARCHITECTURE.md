@@ -44,8 +44,8 @@ frontend/sdk/src/
 │                   against duplicate loads)
 ├── api.ts          The public Analytics object; wires every other
 │                   module together
-├── config.ts       Discovers data-website-id / the collector URL from
-│                   the executing <script> tag
+├── config.ts       Discovers data-website-id / the collector + config
+│                   URLs from the executing <script> tag
 ├── identity.ts     Visitor id (localStorage) / session id
 │                   (sessionStorage) generation & persistence
 ├── context.ts      Collects url/path/title/referrer/language/screen/
@@ -61,6 +61,11 @@ frontend/sdk/src/
 ├── spa.ts              pushState/replaceState/popstate route tracking
 ├── domEvents.ts         data-analytics-event declarative click tracking
 ├── jsonld.ts             Opt-in schema.org Product auto-detection
+├── remoteTrackingConfig.ts  Fetches the dashboard-saved detection config
+│                            (GET /api/config/:websiteId); null on any
+│                            failure, never throws
+├── selectorTracking.ts       CSS-selector/regex extraction + dispatch for
+│                             the selector_regex detection mode
 ├── storage.ts            try/catch-safe localStorage/sessionStorage
 └── debug.ts               The one gated console logger (data-debug)
 ```
@@ -86,6 +91,10 @@ discovers everything else from the script tag itself:
   configured URL. The same domain serving `tracking.js` also serves
   `POST /api/collect` (§2/§9) — this is what makes "no manually specified
   API endpoint" actually true rather than aspirational.
+- **Config endpoint** — derived the same way
+  (`<origin>/api/config/<websiteId>`), for the dashboard-configured
+  detection mode (§7), keeping that path under the same
+  no-endpoint-configuration contract.
 
 `document.currentScript` is read **synchronously**, once, at module
 top-level (`config.ts`'s `findScriptTag()`) — this is what makes `defer`
@@ -103,6 +112,7 @@ carrying `data-website-id` covers dynamic-injection loaders where
 | `data-auto-pageview` | `true` | Automatic `page_view` on load and SPA navigation |
 | `data-auto-spa` | `true` | Patches History API to detect SPA route changes |
 | `data-auto-detect-jsonld` | `false` | Opt-in schema.org Product auto-detection (§7) |
+| `data-auto-detect-config` | `true` | Dashboard-configured selector detection (§7). Defaults ON — unlike JSON-LD, selectors saved in Tracking Setup are an explicit customer instruction, not an opportunistic guess, so they take effect without a second opt-in |
 
 ## 5. Public API
 
@@ -165,8 +175,9 @@ SDK doesn't (and can't) work around backend validation.
 
 Per §"Ecommerce Auto-Detection"'s explicit warning ("DO NOT pretend that
 arbitrary websites can magically reveal exact ecommerce information"),
-automatic detection is limited to two concrete, bounded mechanisms —
-never DOM text scraping, never guessing:
+automatic detection is limited to three concrete, bounded mechanisms —
+never blind DOM text scraping, never guessing at structure the SDK was not
+told about:
 
 1. **Declarative data attributes** (`domEvents.ts`) — a customer opts in
    per-element by adding `data-analytics-event="..."` plus the specific
@@ -182,6 +193,56 @@ never DOM text scraping, never guessing:
    structured data a site publishes for search engines) for a `Product`
    entity with a usable id. Returns nothing — fires no event — whenever
    the structure isn't an unambiguous match, rather than guessing.
+3. **Dashboard-configured selectors** (`selectorTracking.ts` +
+   `remoteTrackingConfig.ts`), the `selector_regex` detection mode — the
+   customer describes, once, in the dashboard's Tracking Setup page, where
+   their product/order data lives (CSS selectors, `:param` URL patterns,
+   and optional extraction regexes). The SDK fetches that config at
+   startup from `GET /api/config/:websiteId` and applies it to the current
+   page. This is the only mechanism that needs **no template change at
+   all** on the customer's site, which is its entire reason to exist — but
+   note it is still not "magic scraping": the SDK reads exactly the
+   selectors it was given and nothing else, which is the same bounded
+   contract as the other two, just authored in the dashboard rather than
+   in the page.
+
+   Design points worth keeping:
+   - The fetch is **fire-and-forget** — `init()` never awaits it, so a
+     slow or failed config request can never delay or lose page-view
+     tracking. Every failure mode (no config saved, unknown website,
+     network error, timeout, malformed body) resolves to `null` and simply
+     leaves this path inert; the other strategies are unaffected.
+   - Detection **re-runs on SPA route changes** (wired into the same
+     `initSpaTracking` callback as the declarative auto-fire scan), since a
+     storefront's product and order pages change by route, not reload. It
+     is safe to repeat because it dedupes on the site's own product/order
+     ids, exactly like `domEvents.ts`'s `firedAutoKeys`.
+   - **Nothing fires below the backend's own minimum contract** — a
+     `product_view` needs a product id, a `purchase` needs orderId +
+     revenue + currency. A page that matches the URL pattern but yields no
+     usable id reports nothing rather than a partial event, because a
+     wrong number silently corrupts a customer's reports while a missing
+     one is at least visible.
+   - **Line items and the synthetic-id fallback**: the backend requires
+     `purchase.items` to be non-empty with a `productId` on every entry.
+     A real order whose per-item id selector missed (or which has no item
+     selectors configured at all) would otherwise have the entire order
+     rejected over its breakdown. Such items instead get a clearly
+     namespaced `synthetic:{orderId}:{index}` id — obviously not a catalog
+     id to anyone later reading the data — so order-level revenue stays
+     correct either way. Configuring `orderItemIdSelector` is what makes
+     line items attribute to real products in per-product reporting.
+   - `add_to_cart` stays **click-driven**, never auto-fired, for the same
+     reason it is excluded from `domEvents.ts`'s `AUTO_FIRE_EVENTS`:
+     reporting one because a button exists would invent carts nobody added
+     to.
+   - The extraction half of `selectorTracking.ts` is a deliberate,
+     near-verbatim port of the dashboard's
+     `frontend/src/utils/trackingConfigDetection.ts`, which powers the
+     "Test Detection" preview. They must stay behaviorally identical — a
+     config the preview says works has to actually work in a real
+     browser — and are duplicated rather than shared only because the
+     dashboard and this SDK have separate builds with no common package.
 
 For everything auto-detection can't reach (server-rendered checkout
 totals with no JSON-LD, a custom SPA cart with no matching data
@@ -296,7 +357,7 @@ in `frontend/sdk/`.
 
 ## 13. Performance
 
-Zero runtime dependencies. Built output: **~10.8 KB raw, ~3.8 KB
+Zero runtime dependencies. Built output: **~17.5 KB raw, ~5.8 KB
 gzipped** (IIFE, minified — see `frontend/sdk/vite.config.ts`). No React,
 no Node-specific APIs, no MongoDB/Redis client code — none of those are
 importable from a module that only ever runs in a browser tab in the

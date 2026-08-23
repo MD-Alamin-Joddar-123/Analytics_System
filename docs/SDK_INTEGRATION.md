@@ -69,11 +69,64 @@ server-renders HTML that eventually reaches a real browser with this
 ## Tracking ecommerce activity
 
 Automatic tracking covers page views. For ecommerce events — a product
-being viewed, added to a cart, checked out, or purchased — your site
-needs to tell the SDK when those things happen, because **a script has no
-way to know your product/cart/order data unless your page tells it.**
-There are two ways to do that: an explicit JavaScript call, or a
-declarative HTML attribute. Use whichever fits the moment.
+being viewed, added to a cart, checked out, or purchased — something has
+to tell the SDK where that data lives on your page, because **a script has
+no way to know your product/cart/order data unless it is told.** There are
+three ways to do that. The first needs no code changes on your site at
+all; the other two are for when you want to report events explicitly from
+your own code.
+
+### Dashboard setup (no changes to your website at all)
+
+This is the recommended path, and the only one that requires **zero**
+edits to your site's templates beyond the one `<script>` tag above.
+
+In the dashboard, open **Tracking Setup**, pick your website, and fill in
+the CSS selectors that describe where your product and order data appear
+on your own pages — for example:
+
+| Field | Example |
+| --- | --- |
+| Product URL pattern | `/product/item/:id` |
+| Product name selector | `h1.product-title` |
+| Product price selector | `.price` |
+| Product price regex | `([\d.]+)` |
+| Order trigger URL pattern | `/my-orders/*` |
+| Order ID selector | `.order-id` |
+| Order total selector | `.order-total` |
+| Item row (container) selector | `.order-item` |
+| Item ID selector | `[data-product-id]::attr(data-product-id)` |
+| Add to cart button selector | `.add-to-cart` |
+
+Press **Save Configuration** once, and from then on every visitor's
+browser fetches that configuration automatically and reports product
+views, add-to-carts, and purchases on its own.
+
+Two conventions worth knowing:
+
+- **`::attr(name)`** on the end of a selector reads that *attribute*
+  instead of the element's visible text — e.g.
+  `[data-product-id]::attr(data-product-id)`. Ids very often live in an
+  attribute rather than in text, and an item id selector is what links a
+  purchased line item back to the same product's views for per-product
+  revenue reporting.
+- **A regex field** pulls a clean value out of surrounding text — e.g.
+  `([\d.]+)` turns `7995.00Tk` into `7995.00`. Leave it blank when the
+  element's text is already just the value.
+
+Use the **Test Detection** panel on the same page to paste a real page's
+HTML and confirm the selectors find what you expect *before* saving. If a
+required piece can't be extracted (no product id, or an order with no
+total), nothing is reported for that page rather than a half-guessed
+event — a wrong number in your reports is worse than a missing one.
+
+Add `data-auto-detect-config="false"` to the script tag to turn this off.
+
+### Explicit and declarative alternatives
+
+If you'd rather report events from your own code — or your data isn't
+reachable from the DOM at all — the two options below work independently
+of the dashboard setup and can be combined with it.
 
 ### Explicit API (recommended for anything server-driven, like checkout/purchase)
 
@@ -204,6 +257,7 @@ All optional, all via attributes on the same `<script>` tag:
 | `data-auto-pageview="false"` | on | Disable automatic page views (SPA route changes still detected unless `data-auto-spa` is also disabled) |
 | `data-auto-spa="false"` | on | Disable SPA route-change detection entirely |
 | `data-auto-detect-jsonld="true"` | off | Best-effort: auto-fires `product_view` from a `schema.org Product` `<script type="application/ld+json">` block already on the page, if one is present and unambiguous |
+| `data-auto-detect-config="false"` | on | Disable the dashboard-configured selector detection described above. Defaults to ON, so selectors saved in Tracking Setup take effect without a second opt-in |
 
 ## What you get in your dashboard
 

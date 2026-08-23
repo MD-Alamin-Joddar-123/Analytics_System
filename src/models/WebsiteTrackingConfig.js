@@ -82,6 +82,13 @@ const websiteTrackingConfigSchema = new mongoose.Schema(
     // each matched container element, never against the whole document, so
     // "price" from one row is never paired with "quantity" from another.
     orderItemContainerSelector: { type: String, trim: true, maxlength: 500 },
+    // Per-item product id — same "::attr(name)" convention as productIdSelector
+    // (see trackingConfigDetection.ts's parseSelector) since an item's real
+    // catalog id is usually an attribute (data-product-id, an <a href>),
+    // never visible text. Without this, a purchase's line items would have
+    // no way to link back to the SAME product's product_view/add_to_cart
+    // events for per-product revenue attribution.
+    orderItemIdSelector: { type: String, trim: true, maxlength: 500 },
     orderItemNameSelector: { type: String, trim: true, maxlength: 500 },
     orderItemPriceSelector: { type: String, trim: true, maxlength: 500 },
     orderItemQtySelector: { type: String, trim: true, maxlength: 500 },

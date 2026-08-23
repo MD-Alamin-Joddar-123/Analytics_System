@@ -13,6 +13,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { ApiError } from './utils/ApiError.js';
 import routes from './routes/index.js';
 import collectRoutes from './routes/collect.routes.js';
+import trackingConfigPublicRoutes from './routes/trackingConfigPublic.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // frontend/sdk's Vite build (see frontend/sdk/vite.config.ts) outputs
@@ -118,6 +119,37 @@ export function createApp() {
       if (err) next(err);
     });
   });
+
+  // --- Public tracking config (dashboard-driven detection) ----------------
+  // GET /api/config/:websiteId is fetched by the SDK from the SAME
+  // arbitrary customer websites tracking.js itself runs on — it needs the
+  // SAME permissive, credential-free CORS treatment as /tracking.js and
+  // /api/collect above, mounted here BEFORE the app-wide restrictive
+  // corsOptions (config/cors.js's CORS_ORIGINS allowlist), which exists for
+  // this dashboard's own frontend, not for arbitrary customer sites.
+  //
+  // The authenticated PUT/POST counterpart (the dashboard SAVING a config)
+  // is a completely separate router — routes/trackingConfig.routes.js,
+  // mounted normally via routes/index.js below — so it correctly gets the
+  // restrictive corsOptions instead.
+  //
+  // NOT `app.use('/api/config', cors(...), trackingConfigPublicRoutes)`:
+  // that would apply the PERMISSIVE cors() middleware to every request
+  // matching the path prefix regardless of HTTP method — including a
+  // PUT/POST that falls through this GET-only router — which would leak a
+  // permissive Access-Control-Allow-Origin onto the authenticated route's
+  // response too (the later restrictive cors(corsOptions), on rejecting an
+  // origin, does not clear a header an earlier middleware already set; a
+  // real regression caught by tests/trackingConfig.write.test.js). cors()
+  // is instead applied inside trackingConfigPublicRoutes itself, scoped to
+  // GET/HEAD only (including their OPTIONS preflight — see that file's own
+  // comment for why a plain `.get()` + cors() pairing isn't enough once a
+  // caller like the dashboard's fetch client sends a non-simple header such
+  // as Authorization, which forces a real preflight even on this "public"
+  // route). A PUT/POST preflight for the authenticated counterpart below
+  // falls through this router untouched and is answered by the restrictive
+  // cors(corsOptions) instead.
+  app.use('/api/config', trackingConfigPublicRoutes);
 
   app.use(helmet());
   app.use(cors(corsOptions));

@@ -49,4 +49,6 @@ export const ErrorCodes = Object.freeze({
   INVALID_ORDER_ID: 'INVALID_ORDER_ID',
   ORDER_NOT_FOUND: 'ORDER_NOT_FOUND',
   INVALID_EVENT_TYPE_FILTER: 'INVALID_EVENT_TYPE_FILTER',
+  // Tracking config (dashboard-driven, zero-template-change detection)
+  TRACKING_CONFIG_NOT_FOUND: 'TRACKING_CONFIG_NOT_FOUND',
 });

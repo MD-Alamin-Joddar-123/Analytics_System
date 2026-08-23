@@ -111,12 +111,14 @@ describe('WebsiteTrackingConfig — schema', () => {
       orderTotalRegex: '([\\d.]+)Tk',
       orderCurrency: 'BDT',
       orderItemContainerSelector: '.order-item',
+      orderItemIdSelector: '[data-product-id]::attr(data-product-id)',
       orderItemNameSelector: '.item-name',
       orderItemPriceSelector: '.item-price',
       orderItemQtySelector: '.item-qty',
       addToCartSelector: '.add-to-cart-btn',
     });
     assert.equal(doc.validateSync(), undefined);
+    assert.equal(doc.orderItemIdSelector, '[data-product-id]::attr(data-product-id)');
   });
 
   test('websiteId alone (all other fields absent) still validates — every detection field is optional', () => {
