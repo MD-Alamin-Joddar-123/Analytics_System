@@ -144,9 +144,106 @@ describe('detectOrderConfig — Bootstrap order-confirmation page (matches the u
     assert.equal(value(result.orderTriggerUrlPattern), '/my-orders/*');
   });
 
-  test('sources currency from the website settings, not page text', () => {
+  test('currency is read from the order total itself — the page beats stale settings', () => {
     assert.equal(value(result.orderCurrency), 'BDT');
-    assert.equal(result.orderCurrency.source, 'website-settings');
+    assert.equal(result.orderCurrency.confidence, 'high');
+    assert.equal(result.orderCurrency.source, 'order-page');
+  });
+
+  test('settings remain the fallback when the page carries no readable currency marker', () => {
+    const markerFree = detectOrderConfig(
+      `<html><body>
+        <nav>Home | Shop | My Orders | Account</nav>
+        <h2>Thank you for your order!</h2>
+        <p>Order ID: #abc123</p>
+        <p>Order Total: 2500.00</p>
+        <p>Your order is being processed and you will receive a shipping confirmation email shortly.</p>
+        <footer>© 2026 Example Shop. All rights reserved.</footer>
+      </body></html>`,
+      'https://shop.example.com/my-orders/abc123',
+      'USD'
+    );
+    assert.equal(value(markerFree.orderCurrency), 'USD');
+    assert.equal(markerFree.orderCurrency.confidence, 'high');
+    assert.equal(markerFree.orderCurrency.source, 'website-settings');
+  });
+
+  test('an ambiguous "$" total is not resolved from the page — settings stand instead', () => {
+    const dollarOnly = detectOrderConfig(
+      `<html><body>
+        <nav>Home | Shop | My Orders | Account</nav>
+        <h2>Thank you for your order!</h2>
+        <p>Order ID: #abc123</p>
+        <p>Order Total: $50.00</p>
+        <p>Your order is being processed and you will receive a shipping confirmation email shortly.</p>
+        <footer>© 2026 Example Shop. All rights reserved.</footer>
+      </body></html>`,
+      'https://shop.example.com/my-orders/abc123',
+      'CAD'
+    );
+    assert.equal(value(dollarOnly.orderCurrency), 'CAD');
+    assert.equal(dollarOnly.orderCurrency.source, 'website-settings');
+
+    // And with no settings configured, an unresolvable marker means the
+    // field is omitted entirely — money is never guessed.
+    const noSettings = detectOrderConfig(
+      `<html><body>
+        <nav>Home | Shop | My Orders | Account</nav>
+        <h2>Thank you for your order!</h2>
+        <p>Order ID: #abc123</p>
+        <p>Order Total: $50.00</p>
+        <p>Your order is being processed and you will receive a shipping confirmation email shortly.</p>
+        <footer>© 2026 Example Shop. All rights reserved.</footer>
+      </body></html>`,
+      'https://shop.example.com/my-orders/abc123',
+      undefined
+    );
+    assert.equal(noSettings.orderCurrency, undefined);
+  });
+
+  test('a total whose text conflicts with itself (BDT beside $) defers to settings rather than guessing', () => {
+    const conflicted = detectOrderConfig(
+      `<html><body>
+        <nav>Home | Shop | My Orders | Account</nav>
+        <h2>Thank you for your order!</h2>
+        <p>Order ID: #abc123</p>
+        <div class="mt-3"><h5>Total: 2500.00 BDT (about $23)</h5></div>
+        <div class="d-flex justify-content-between mb-3 border-bottom pb-3">
+          <h6>T-Shirt</h6><p class="m-0">1500</p><small class="text-muted">2</small>
+        </div>
+        <p>Your order has been confirmed and is being processed. A confirmation email with your receipt and tracking
+        details is on its way to the address you provided at checkout. You can also review this order at any time
+        from your account's order history page.</p>
+        <footer>© 2026 Example Shop. All rights reserved.</footer>
+      </body></html>`,
+      'https://shop.example.com/my-orders/abc123',
+      'USD'
+    );
+    assert.equal(value(conflicted.orderCurrency), 'USD');
+    assert.equal(conflicted.orderCurrency.source, 'website-settings');
+  });
+
+  test('a markerless total still picks the currency up from the body\'s marked prices', () => {
+    const rescued = detectOrderConfig(
+      `<html><body>
+        <nav>Home | Shop | My Orders | Account</nav>
+        <h2>Thank you for your order!</h2>
+        <p>Order ID: #abc123</p>
+        <table>
+          <tr><td>T-Shirt</td><td><span class="price">Tk 1500</span></td><td>2</td></tr>
+        </table>
+        <p>Grand Total: 3000.00</p>
+        <p>Your order has been confirmed and is being processed. A confirmation email with your receipt and tracking
+        details is on its way to the address you provided at checkout. You can also review this order at any time
+        from your account's order history page.</p>
+        <footer>© 2026 Example Shop. All rights reserved.</footer>
+      </body></html>`,
+      'https://shop.example.com/my-orders/abc123',
+      'USD'
+    );
+    assert.equal(value(rescued.orderCurrency), 'BDT');
+    assert.equal(rescued.orderCurrency.source, 'order-page');
+    assert.equal(rescued.orderCurrency.confidence, 'high');
   });
 
   test('detects the order id and a regex that actually extracts it', () => {
@@ -419,6 +516,27 @@ function loadFixture(name) {
 function textAt(html, selector) {
   return cheerio.load(html)(selector).text().trim();
 }
+
+// Regression for a real customer page: the signup record said USD, but the
+// order total plainly reads "119960.00 BDT" while USD appears ONLY in noise
+// (og:price meta, a third-party <script> snippet, an <aside> promo, footer
+// shipping note). Detection must report BDT at high confidence.
+describe('fixture: order-confirmation-bdt-total.html — page currency beats stale settings, decoys ignored', () => {
+  const HTML = loadFixture('order-confirmation-bdt-total.html');
+  const result = detectOrderConfig(HTML, 'https://meghna.example.com/orders/ORD-20260820-7734', 'USD');
+
+  test('reports BDT from the order total despite every decoy saying USD — high confidence', () => {
+    assert.deepEqual(result.orderCurrency, { value: 'BDT', confidence: 'high', source: 'order-page' });
+  });
+
+  test('the fixture is a genuine order page — id and total still detected', () => {
+    const $ = cheerio.load(HTML);
+    assert.ok(value(result.orderIdSelector));
+    const extracted = new RegExp(value(result.orderIdRegex)).exec($(value(result.orderIdSelector)).text());
+    assert.equal(extracted[1], 'ORD-20260820-7734');
+    assert.match(textAt(HTML, value(result.orderTotalSelector)), /119960\.00/);
+  });
+});
 
 describe('fixture: product-jsonld.html — Priority 1 (JSON-LD structured data)', () => {
   const HTML = loadFixture('product-jsonld.html');

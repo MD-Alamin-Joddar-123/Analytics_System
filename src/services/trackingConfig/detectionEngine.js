@@ -556,6 +556,79 @@ function findCurrencyPriceElement($) {
   return best;
 }
 
+// --- Currency resolution ----------------------------------------------------
+//
+// Marks that map to exactly ONE ISO-4217 code. Letter codes are their own
+// ISO code; a symbol earns an entry only when it means one currency
+// worldwide. '$' (USD/AUD/CAD/SGD/…) and '¥' (JPY/CNY) are deliberately
+// ABSENT: resolving them from page text would be guessing, and money is
+// never worth guessing — pages showing only those keep falling back to the
+// website's configured currency.
+const CURRENCY_MARK_TO_ISO = {
+  '৳': 'BDT',
+  Tk: 'BDT',
+  BDT: 'BDT',
+  EUR: 'EUR',
+  '€': 'EUR',
+  GBP: 'GBP',
+  '£': 'GBP',
+  INR: 'INR',
+  '₹': 'INR',
+  AUD: 'AUD',
+  CAD: 'CAD',
+  JPY: 'JPY',
+  PKR: 'PKR',
+  LKR: 'LKR',
+  NPR: 'NPR',
+  AED: 'AED',
+  SAR: 'SAR',
+  '₩': 'KRW',
+  '₽': 'RUB',
+  '₺': 'TRY',
+  '฿': 'THB',
+};
+const AMBIGUOUS_CURRENCY_MARKS = new Set(['$', '¥']);
+const CURRENCY_MARKER_REGEX = /৳|Tk\b|BDT|USD|EUR|GBP|INR|AUD|CAD|JPY|PKR|LKR|NPR|AED|SAR|[€£₹₩₽₺฿$¥]/gi;
+
+// Reads every currency mark in `text` and returns the single ISO code they
+// all agree on — undefined when they conflict ("BDT … USD" in one element)
+// or when an ambiguous mark like "$" is present, since either would make
+// the answer a coin flip.
+function resolveCurrencyFromText(text) {
+  const isos = new Set();
+  for (const match of String(text).matchAll(CURRENCY_MARKER_REGEX)) {
+    const mark = match[0];
+    let iso = CURRENCY_MARK_TO_ISO[mark];
+    if (iso === undefined && !AMBIGUOUS_CURRENCY_MARKS.has(mark)) iso = CURRENCY_MARK_TO_ISO[mark.toUpperCase()];
+    if (!iso) return undefined; // ambiguous or unrecognized mark
+    isos.add(iso);
+  }
+  return isos.size === 1 ? [...isos][0] : undefined;
+}
+
+// Currency precedence for order pages: the page itself first, settings
+// second. The order total is the most authoritative spot on the page
+// ("Total: 119960.00 BDT"), with the body's smallest currency-marked price
+// as the next candidate — both paths ignore page chrome entirely, so a
+// third-party widget's "$9.99/mo" inside <script>/<aside> or an og:price
+// meta tag can never win over what the page actually displays. A resolved
+// page marker OVERRIDES stale settings (the store may bill in BDT while
+// its signup record still says USD); confidence stays high either way,
+// because both sources are authoritative about themselves.
+function detectOrderCurrency($, websiteCurrency, total) {
+  if (total?.selector?.value) {
+    const fromTotal = resolveCurrencyFromText($(total.selector.value).first().text());
+    if (fromTotal) return { value: fromTotal, confidence: 'high', source: 'order-page' };
+  }
+  const $price = findCurrencyPriceElement($);
+  if ($price) {
+    const fromPrice = resolveCurrencyFromText($price.text());
+    if (fromPrice) return { value: fromPrice, confidence: 'high', source: 'order-page' };
+  }
+  if (websiteCurrency) return { value: websiteCurrency, confidence: 'high', source: 'website-settings' };
+  return undefined;
+}
+
 // Original pre-layer wording plus the other calls-to-action that mean the
 // same thing on a product page. "Buy now"/"order now" are kept distinctly
 // weaker signals than "add to cart" but they are still the single most
@@ -1123,7 +1196,12 @@ function findLabeledValue($, labelPattern, valuePattern, { includeParent = true,
 const ORDER_ID_VALUE = /#?([a-f0-9-]{6,})/i;
 const ORDER_ID_ANY_VALUE = /#?\s*([A-Za-z-]*\d[A-Za-z0-9_-]{2,})/;
 
-const ORDER_ID_HEX_RUN = /[a-f0-9-]{6,}/i;
+// Must match a STANDALONE hex-ish token: requiring a non-[A-Za-z0-9_-]
+// neighbour (or string edge) on both sides stops ids like
+// "ORD-20260820-7734" — whose trailing digit run is technically all hex
+// characters — from being misread as hex and captured as "-20260820-7734".
+// A genuine UUID ("4a15ae8f-0e38-…") still qualifies via its own edges.
+const ORDER_ID_HEX_RUN = /(?:^|[^A-Za-z0-9_-])[a-f0-9-]{6,}(?:$|[^A-Za-z0-9_-])/i;
 const ORDER_ID_DIGIT_WORD = /[A-Za-z-]*\d[A-Za-z0-9_-]*/;
 
 const ORDER_ID_PATTERNS = [
@@ -1475,21 +1553,21 @@ export function detectOrderConfig(html, pageUrl, websiteCurrency) {
 
   result.orderTriggerUrlPattern = { value: urlPatternFromPath(pathname), confidence: 'medium', source: 'url-structure' };
 
-  // Sourced from the website's own settings, never guessed from page
-  // text — see the module header comment and the plan's rationale: this
-  // is strictly more reliable than scraping a currency symbol, and money
-  // is never worth guessing.
-  if (websiteCurrency) {
-    result.orderCurrency = { value: websiteCurrency, confidence: 'high', source: 'website-settings' };
+  const id = detectOrderId($);
+  const total = detectOrderTotal($);
+
+  // Page-first with settings fallback — see detectOrderCurrency. Needs the
+  // detected total element, so it runs after detectOrderTotal.
+  const currency = detectOrderCurrency($, websiteCurrency, total);
+  if (currency) {
+    result.orderCurrency = currency;
   }
 
-  const id = detectOrderId($);
   if (id) {
     result.orderIdSelector = id.selector;
     result.orderIdRegex = id.regex;
   }
 
-  const total = detectOrderTotal($);
   if (total) {
     result.orderTotalSelector = total.selector;
     result.orderTotalRegex = total.regex;

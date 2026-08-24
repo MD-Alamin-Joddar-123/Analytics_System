@@ -98,7 +98,7 @@ describe('POST /api/config/:websiteId/detect', () => {
     assert.deepEqual(body.data.order, {}); // orderUrl not supplied
   });
 
-  test('orderCurrency comes from the website\'s own settings, not page text', async (t) => {
+  test('orderCurrency is read from the page\'s own order total, agreeing with settings here', async (t) => {
     const pipeline = setupMockReportingPipeline(t, { currency: 'BDT' });
     t.mock.method(ssrfSafeFetch, 'fetchHtmlSafely', async (url) => ({ html: ORDER_HTML, finalUrl: url }));
 
@@ -107,7 +107,7 @@ describe('POST /api/config/:websiteId/detect', () => {
 
     assert.equal(res.status, 200);
     assert.equal(body.data.order.orderCurrency.value, 'BDT');
-    assert.equal(body.data.order.orderCurrency.source, 'website-settings');
+    assert.equal(body.data.order.orderCurrency.source, 'order-page');
   });
 
   test('a fetch failure on one side does not block the other side\'s result', async (t) => {
