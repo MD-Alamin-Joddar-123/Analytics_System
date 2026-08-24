@@ -957,3 +957,333 @@ describe('fixture: product-bem-details-tabs.html — BEM/Django product page wit
     assert.equal(result.productIdSource.confidence, 'low');
   });
 });
+
+// Regression for academy.adspillar.com: a WooCommerce + page-builder course
+// page that Auto Detect rejected outright as a sign-in page, because the
+// theme ships a customer login form (plus a hidden login modal) in the
+// header of EVERY page. The same fixture also pins the price-scoping fix —
+// its price class appears four times and the real one is not the first.
+describe('fixture: product-woocommerce-themed-login-widget.html — login widgets and repeated price classes', () => {
+  const HTML = loadFixture('product-woocommerce-themed-login-widget.html');
+  const URL = 'https://academy.example.com/product/ai-data-science/';
+
+  test('a product page carrying a login form is NOT rejected as a sign-in page', () => {
+    assert.doesNotThrow(() => detectProductConfig(HTML, URL));
+  });
+
+  test('the title comes from WooCommerce\'s exact product_title fingerprint', () => {
+    const result = detectProductConfig(HTML, URL);
+    assert.equal(value(result.productNameSelector), 'h1.product_title');
+    assert.equal(result.productNameSelector.confidence, 'high');
+    assert.equal(textAt(HTML, value(result.productNameSelector)), 'AI Data Science & Machine Learning with Python');
+  });
+
+  test('the price is the one in the product summary, not the mini-cart total that comes first in the document', () => {
+    const result = detectProductConfig(HTML, URL);
+    const selector = value(result.productPriceSelector);
+    assert.ok(selector, 'a price selector must be produced');
+
+    // The runtime SDK reads a selector with querySelector(), i.e. the FIRST
+    // match — assert on exactly that element, not on "some match somewhere".
+    const $ = cheerio.load(HTML);
+    const firstMatch = $(selector).first().text().trim();
+    assert.match(firstMatch, /49\.99/);
+
+    const extracted = new RegExp(value(result.productPriceRegex)).exec(firstMatch);
+    assert.equal(extracted[1], '49.99');
+  });
+
+  test('the price selector is NOT a positional nth-of-type path when a named one exists', () => {
+    const result = detectProductConfig(HTML, URL);
+    assert.doesNotMatch(value(result.productPriceSelector), /nth-of-type/);
+  });
+
+  test('a non-unique (first-match) price selector never reports high confidence', () => {
+    const result = detectProductConfig(HTML, URL);
+    const $ = cheerio.load(HTML);
+    const matchCount = $(value(result.productPriceSelector)).length;
+    if (matchCount > 1) {
+      assert.notEqual(result.productPriceSelector.confidence, 'high');
+    }
+  });
+
+  test('the add-to-cart button and the variation form id are both found', () => {
+    const result = detectProductConfig(HTML, URL);
+
+    // Asserted by what the selector RESOLVES TO rather than by its exact
+    // text: `[name="add-to-cart"]` and `button.single_add_to_cart_button`
+    // are both correct answers here, and pinning one spelling would fail
+    // the next time the cascade legitimately prefers the other.
+    const $ = cheerio.load(HTML);
+    const $cta = $(value(result.addToCartSelector)).first();
+    assert.equal($cta.length, 1);
+    assert.match($cta.text().trim(), /add to cart/i);
+
+    assert.equal(value(result.productIdSource), 'selector');
+    assert.match(value(result.productIdSelector), /data-product_id/);
+  });
+
+  test('the related-courses grid does not make this a listing page', () => {
+    assert.doesNotThrow(() => detectProductConfig(HTML, URL));
+  });
+});
+
+describe('login classification — a password field is evidence only when the form IS the page', () => {
+  const LOGIN_PAGE = `
+    <html><head><title>My Account</title></head><body>
+      <h1>My Account</h1>
+      <form action="/my-account/">
+        <label>Username or email <input type="text" name="username" /></label>
+        <label>Password <input type="password" name="password" /></label>
+        <button type="submit">Continue</button>
+      </form>
+      <p>Lost your password? Reset it using the link we email you.</p>
+    </body></html>`;
+
+  test('a genuine, content-free login page is still rejected even without the words "sign in"', () => {
+    assert.throws(
+      () => detectProductConfig(LOGIN_PAGE, 'https://shop.example.com/products/rui-fish'),
+      (error) => error instanceof DetectionClassificationError && error.reason === 'login_required'
+    );
+  });
+
+  test('a page whose title says "Sign In" is still rejected, as before', () => {
+    const HTML = `
+      <html><head><title>Sign In</title></head><body>
+        <nav>Home | Shop | About | Contact</nav>
+        <h1>Sign In</h1>
+        <form><label>Password <input type="password" name="password" /></label></form>
+        <p>Do not have an account? Register here to start shopping with us today, it only takes a moment.</p>
+      </body></html>`;
+    assert.throws(
+      () => detectProductConfig(HTML, 'https://shop.example.com/auth/login/'),
+      (error) => error instanceof DetectionClassificationError && error.reason === 'login_required'
+    );
+  });
+
+  test('structured Product data outranks a login widget outright', () => {
+    const HTML = `
+      <html><head>
+        <title>Rui Fish</title>
+        <script type="application/ld+json">
+          {"@context":"https://schema.org","@type":"Product","name":"Rui Fish","sku":"p-99",
+           "offers":{"@type":"Offer","price":"799.00","priceCurrency":"BDT"}}
+        </script>
+      </head><body>
+        <nav>Home | Shop | About | Contact</nav>
+        <form><label>Password <input type="password" name="password" /></label></form>
+        <h1 class="product-title">Rui Fish</h1>
+        <p>Fresh river Rui fish, sourced daily from local fishermen. Rich in protein and Omega-3 fatty acids,
+        perfect for a healthy family meal. Delivered same-day within city limits, cleaned and cut to order.</p>
+        <span class="price">799.00</span>
+        <footer>&copy; 2026 Example Fish Market. All rights reserved.</footer>
+      </body></html>`;
+    const result = detectProductConfig(HTML, 'https://shop.example.com/products/rui-fish');
+    assert.equal(value(result.productNameSelector), 'h1.product-title');
+  });
+});
+
+// Regression for academy.adspillar.com's WooCommerce order-received page.
+// WooCommerce renders the confirmation WRAPPER to anonymous visitors but
+// hides the order behind "Please log in to your account to view this
+// order." — and the login form it ships carries the very same `hidden-form`
+// class the theme uses for its always-present header modal, so DOM
+// visibility cannot tell a real login wall from a decorative one. The
+// sentence is what distinguishes them.
+describe('order pages behind a login wall are explained, not silently empty', () => {
+  const WALLED_ORDER = `
+    <html><head><title>Checkout | Academy</title></head><body>
+      <nav>Shopping cart | Checkout | Order complete</nav>
+      <p>Thank you. Your order has been received. Please log in to your account to view this order.</p>
+      <form class="login woocommerce-form woocommerce-form-login hidden-form" action="/my-account/">
+        <label>Username or email <input type="text" name="username" /></label>
+        <label>Password <input type="password" name="password" /></label>
+        <button type="submit">Log in</button>
+      </form>
+      <p>Subscribe and get 10% off your first purchase. Be the first to know about exclusive deals,
+      new arrivals and special offers from our store.</p>
+    </body></html>`;
+
+  test('is rejected as login_required rather than returning an all-empty result', () => {
+    assert.throws(
+      () => detectOrderConfig(WALLED_ORDER, 'https://academy.example.com/checkout/order-received/48584/', 'BDT'),
+      (error) => error instanceof DetectionClassificationError && error.reason === 'login_required'
+    );
+  });
+
+  test('the "hidden-form" class alone never decides it — the wall sentence does', () => {
+    // Same markup, same hidden-form class, but no wall sentence: this is
+    // the header login modal on a genuine order page, which must still be
+    // detected normally.
+    const REAL_ORDER = WALLED_ORDER.replace(
+      'Thank you. Your order has been received. Please log in to your account to view this order.',
+      'Thank you. Your order has been received. Order number: 48584 — Order Total: 289.99 BDT'
+    );
+    const result = detectOrderConfig(REAL_ORDER, 'https://academy.example.com/checkout/order-received/48584/', 'BDT');
+    assert.ok(value(result.orderIdSelector), 'order id must still be detected');
+  });
+
+  test('"You must be logged in to post a review" is NOT a login wall', () => {
+    // Extremely common in the WooCommerce reviews tab. It is a different
+    // sentence about a different thing, and must never gate a product page.
+    const HTML = `
+      <html><head><title>Rui Fish</title></head><body>
+        <nav>Home | Shop | About | Contact</nav>
+        <h1 class="product-title">Rui Fish</h1>
+        <p>Fresh river Rui fish, sourced daily from local fishermen and delivered same-day within city limits.</p>
+        <span class="price">799.00</span>
+        <button class="add-to-cart">Add to cart</button>
+        <section class="reviews"><p>You must be logged in to post a review.</p></section>
+        <footer>&copy; 2026 Example Fish Market. All rights reserved.</footer>
+      </body></html>`;
+    const result = detectProductConfig(HTML, 'https://shop.example.com/products/rui-fish');
+    assert.equal(value(result.productNameSelector), 'h1.product-title');
+  });
+});
+
+describe('site chrome never supplies a product field', () => {
+  // Reduced from the real page: the breadcrumb repeats the product name
+  // verbatim, comes FIRST in the document, and is exactly as "small" as the
+  // <h1> — so it used to win and the saved selector pointed at navigation.
+  // The theme also stamps data-sku="0" on its header search form as an
+  // on/off flag; taking that would have given every product the id "0".
+  const HTML = `
+    <html><head>
+      <script type="application/ld+json">
+        {"@context":"https://schema.org","@type":"Product","name":"12-piece Tableware Set",
+         "offers":{"@type":"Offer","price":"229.99","priceCurrency":"BDT"}}
+      </script>
+    </head><body>
+      <header>
+        <form class="searchform woodmart-ajax-search" data-sku="0">
+          <input type="search" name="s" />
+        </form>
+        <div class="mini-cart"><span class="woocommerce-Price-amount amount">22.99&#2547;</span></div>
+      </header>
+      <nav class="woodmart-breadcrumbs"><a href="/">Home</a> / <span class="wd-last">12-piece Tableware Set</span></nav>
+      <main>
+        <h1 class="product_title entry-title">12-piece Tableware Set</h1>
+        <p class="price"><span class="woocommerce-Price-amount amount">229.99&#2547;</span></p>
+        <p>A complete twelve-piece dinner service in glazed stoneware, dishwasher and microwave safe,
+        suitable for everyday family meals as well as entertaining guests at home.</p>
+        <form class="cart"><button type="submit" name="add-to-cart" value="191" class="single_add_to_cart_button">Add to cart</button></form>
+      </main>
+      <footer>&copy; 2026 Academy. All rights reserved.</footer>
+    </body></html>`;
+  const URL = 'https://academy.example.com/product/12-piece-tableware-set/';
+
+  test('the product name is the <h1>, not the breadcrumb span that repeats it', () => {
+    const result = detectProductConfig(HTML, URL);
+    assert.equal(value(result.productNameSelector), 'h1.product_title');
+  });
+
+  test('a flag-valued data-sku on a header search form is never taken as the product id', () => {
+    const result = detectProductConfig(HTML, URL);
+    const selector = value(result.productIdSelector);
+    if (selector) {
+      assert.doesNotMatch(selector, /searchform/);
+      // Whatever it settled on must resolve to a REAL id, not the flag.
+      const $ = cheerio.load(HTML);
+      const attrMatch = /::attr\(([^)]+)\)$/.exec(selector);
+      const read = attrMatch
+        ? $(selector.slice(0, attrMatch.index).trim()).first().attr(attrMatch[1])
+        : $(selector).first().text().trim();
+      assert.notEqual(read, '0');
+      assert.equal(read, '191');
+    }
+  });
+
+  test('the price is the product summary one, not the header mini-cart total', () => {
+    const result = detectProductConfig(HTML, URL);
+    const $ = cheerio.load(HTML);
+    assert.match($(value(result.productPriceSelector)).first().text(), /229\.99/);
+  });
+});
+
+// Regression for the real WooCommerce order-received page. Its line items
+// were previously invisible to detection: the price sits inside a <bdi>
+// whose only leaf holds the currency symbol, and the quantity renders as
+// "× 1" — neither is a "clean number leaf", which was the only shape the
+// item detectors would accept. That restriction existed because the config
+// schema has no per-item regex field; the runtime now extracts the first
+// numeric token from a decorated value, so these are readable and worth
+// returning.
+describe('fixture: order-received-woocommerce-guest.html — decorated line-item values', () => {
+  const HTML = loadFixture('order-received-woocommerce-guest.html');
+  const URL = 'https://academy.example.com/checkout/order-received/48586/';
+  const result = detectOrderConfig(HTML, URL, 'BDT');
+
+  test('the order id and total come from WooCommerce\'s overview list, and their regexes extract', () => {
+    const $ = cheerio.load(HTML);
+    const idText = $(value(result.orderIdSelector)).text();
+    assert.equal(new RegExp(value(result.orderIdRegex)).exec(idText)[1], '48586');
+
+    const totalText = $(value(result.orderTotalSelector)).text();
+    assert.equal(new RegExp(value(result.orderTotalRegex)).exec(totalText)[1], '289.99');
+  });
+
+  test('the item container matches the two product rows and NOT the tfoot subtotal/shipping/total rows', () => {
+    const $ = cheerio.load(HTML);
+    assert.equal($(value(result.orderItemContainerSelector)).length, 2);
+  });
+
+  test('a price wrapped in <bdi> with a trailing currency symbol is detected', () => {
+    assert.ok(value(result.orderItemPriceSelector), 'item price must be detected');
+    const $ = cheerio.load(HTML);
+    const prices = $(value(result.orderItemContainerSelector))
+      .map((_, row) => $(row).find(value(result.orderItemPriceSelector)).first().text().trim())
+      .get();
+    assert.deepEqual(prices, ['229.99৳', '60.00৳']);
+  });
+
+  test('a "× 1" quantity is detected', () => {
+    assert.ok(value(result.orderItemQtySelector), 'item quantity must be detected');
+    const $ = cheerio.load(HTML);
+    const qtys = $(value(result.orderItemContainerSelector))
+      .map((_, row) => $(row).find(value(result.orderItemQtySelector)).first().text().trim().replace(/\s+/g, ' '))
+      .get();
+    assert.deepEqual(qtys, ['× 1', '× 3']);
+  });
+
+  test('every decorated item value is readable the way the runtime SDK reads it', () => {
+    // Mirrors parseNumber() in frontend/sdk/src/selectorTracking.js: a
+    // clean number if possible, otherwise the first numeric token. If this
+    // ever diverges, the detector is emitting selectors the SDK cannot use.
+    const parseNumber = (text) => {
+      if (text === undefined || text.trim().length === 0) return undefined;
+      const direct = Number(text.replace(/,/g, ''));
+      if (Number.isFinite(direct)) return direct;
+      const match = /-?\d[\d,]*(?:\.\d+)?/.exec(text);
+      return match ? Number(match[0].replace(/,/g, '')) : undefined;
+    };
+
+    const $ = cheerio.load(HTML);
+    const rows = $(value(result.orderItemContainerSelector));
+    const parsed = rows
+      .map((_, row) => ({
+        price: parseNumber($(row).find(value(result.orderItemPriceSelector)).first().text().trim()),
+        qty: parseNumber($(row).find(value(result.orderItemQtySelector)).first().text().trim()),
+      }))
+      .get();
+
+    assert.deepEqual(parsed, [
+      { price: 229.99, qty: 1 },
+      { price: 60, qty: 3 },
+    ]);
+  });
+
+  test('the item name selector is anchored to the named cell, not a positional nth-of-type path', () => {
+    const selector = value(result.orderItemNameSelector);
+    assert.doesNotMatch(selector, /nth-of-type/);
+
+    const $ = cheerio.load(HTML);
+    const names = $(value(result.orderItemContainerSelector))
+      .map((_, row) => $(row).find(selector).first().text().trim())
+      .get();
+    assert.deepEqual(names, ['12-piece Tableware Set', 'Ceramic Mug']);
+  });
+
+  test('no item id is invented when the rows carry no id attribute', () => {
+    assert.equal(result.orderItemIdSelector, undefined);
+  });
+});

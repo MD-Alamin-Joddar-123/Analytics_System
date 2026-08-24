@@ -1,0 +1,99 @@
+<!--
+  A WooCommerce "order received" / thank-you page for a GUEST order, in the
+  markup WooCommerce actually emits (reduced, but the class names, nesting
+  and text decoration are verbatim).
+
+  Two things here defeated line-item detection before:
+
+  1. The line total is
+       <span class="woocommerce-Price-amount"><bdi>229.99<span
+          class="woocommerce-Price-currencySymbol">৳</span></bdi></span>
+     The <bdi> has a child so it is not a leaf, and the only leaf inside it
+     holds nothing but the currency symbol — so a rule that accepted only
+     "a leaf whose whole text is a clean number" found no price at all.
+
+  2. The quantity is rendered as "× 1", never as a bare "1".
+
+  Both are now readable because the runtime SDK extracts the first numeric
+  token from a decorated value (parseNumber in selectorTracking.js).
+
+  The <tfoot> Subtotal / Shipping / Total rows are deliberately present:
+  they are siblings of the line-item rows in the same table and must NOT be
+  mistaken for products.
+-->
+<html>
+<head><title>Order received | Academy</title></head>
+<body>
+  <nav>Shopping cart &rsaquo; Checkout &rsaquo; Order complete</nav>
+
+  <p class="woocommerce-notice woocommerce-notice--success woocommerce-thankyou-order-received">
+    Thank you. Your order has been received.
+  </p>
+
+  <ul class="woocommerce-order-overview woocommerce-thankyou-order-details order_details">
+    <li class="woocommerce-order-overview__order order">
+      Order number: <strong>48586</strong>
+    </li>
+    <li class="woocommerce-order-overview__date date">
+      Date: <strong>August 24, 2026</strong>
+    </li>
+    <li class="woocommerce-order-overview__email email">
+      Email: <strong>arif233@example.com</strong>
+    </li>
+    <li class="woocommerce-order-overview__total total">
+      Total: <strong><span class="woocommerce-Price-amount amount"><bdi>289.99<span class="woocommerce-Price-currencySymbol">&#2547;</span></bdi></span></strong>
+    </li>
+    <li class="woocommerce-order-overview__payment-method method">
+      Payment method: <strong>Cash on delivery</strong>
+    </li>
+  </ul>
+
+  <section class="woocommerce-order-details">
+    <h2 class="woocommerce-order-details__title">Order details</h2>
+    <table class="woocommerce-table woocommerce-table--order-details shop_table order_details">
+      <thead>
+        <tr>
+          <th class="woocommerce-table__product-name product-name">Product</th>
+          <th class="woocommerce-table__product-table product-total">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="woocommerce-table__line-item order_item">
+          <td class="woocommerce-table__product-name product-name">
+            <a href="/product/12-piece-tableware-set/">12-piece Tableware Set</a>
+            <strong class="product-quantity">&times;&nbsp;1</strong>
+          </td>
+          <td class="woocommerce-table__product-total product-total">
+            <span class="woocommerce-Price-amount amount"><bdi>229.99<span class="woocommerce-Price-currencySymbol">&#2547;</span></bdi></span>
+          </td>
+        </tr>
+        <tr class="woocommerce-table__line-item order_item">
+          <td class="woocommerce-table__product-name product-name">
+            <a href="/product/ceramic-mug/">Ceramic Mug</a>
+            <strong class="product-quantity">&times;&nbsp;3</strong>
+          </td>
+          <td class="woocommerce-table__product-total product-total">
+            <span class="woocommerce-Price-amount amount"><bdi>60.00<span class="woocommerce-Price-currencySymbol">&#2547;</span></bdi></span>
+          </td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <th scope="row">Subtotal:</th>
+          <td><span class="woocommerce-Price-amount amount"><bdi>229.99<span class="woocommerce-Price-currencySymbol">&#2547;</span></bdi></span></td>
+        </tr>
+        <tr>
+          <th scope="row">Shipping:</th>
+          <td><span class="woocommerce-Price-amount amount"><bdi>60.00<span class="woocommerce-Price-currencySymbol">&#2547;</span></bdi></span> <small>via Flat rate</small></td>
+        </tr>
+        <tr>
+          <th scope="row">Total:</th>
+          <td><span class="woocommerce-Price-amount amount"><bdi>289.99<span class="woocommerce-Price-currencySymbol">&#2547;</span></bdi></span></td>
+        </tr>
+      </tfoot>
+    </table>
+  </section>
+
+  <footer>&copy; 2026 Academy. All rights reserved. Contact support with any questions about your order.</footer>
+</body>
+</html>

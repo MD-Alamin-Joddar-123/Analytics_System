@@ -82,7 +82,7 @@ function isUniqueWithin($scope, selector, $el) {
 // selectorGenerator.js already uses client-side, ported to cheerio.
 // `matchFn` lets callers scope uniqueness to a container (order-item
 // fields) instead of the whole document (page-level fields).
-function buildSelectorCascade($el, matchFn) {
+function buildSelectorCascade($el, matchFn, { allowStructural = true } = {}) {
   const id = $el.attr('id');
   if (id) {
     const selector = `#${escapeIdent(id)}`;
@@ -103,6 +103,8 @@ function buildSelectorCascade($el, matchFn) {
     const selector = tag ? `${tag}.${combo}` : `.${combo}`;
     if (matchFn(selector, $el)) return { selector, tier: 'class' };
   }
+
+  if (!allowStructural) return null;
 
   const parts = [];
   let current = $el;
@@ -127,6 +129,143 @@ function buildSelector($, $el) {
 
 function buildSelectorWithin($scope, $el) {
   return buildSelectorCascade($el, (selector, el) => isUniqueWithin($scope, selector, el));
+}
+
+// Every way of naming THIS element on its own, best first — the same
+// ordinal preference buildSelectorCascade uses, minus the structural
+// fallback (a positional selector is meaningless once it is combined with
+// an ancestor scope).
+function ownSelectorCandidates($el) {
+  const candidates = [];
+  const id = $el.attr('id');
+  if (id) candidates.push(`#${escapeIdent(id)}`);
+
+  for (const attr of SEMANTIC_ATTRS) {
+    const value = $el.attr(attr);
+    if (value) candidates.push(`[${attr}="${value}"]`);
+  }
+
+  const tag = tagNameOf($el);
+  const classes = ($el.attr('class') || '').split(/\s+/).filter(Boolean).slice(0, MAX_CLASSES);
+  for (let n = classes.length; n >= 1; n -= 1) {
+    const combo = classes.slice(0, n).map(escapeIdent).join('.');
+    candidates.push(tag ? `${tag}.${combo}` : `.${combo}`);
+  }
+  if (tag) candidates.push(tag);
+
+  return candidates;
+}
+
+function firstMatchIs($, selector, $el) {
+  try {
+    const found = $(selector);
+    return found.length > 0 && found.get(0) === $el.get(0);
+  } catch {
+    return false;
+  }
+}
+
+const MAX_SCOPE_DEPTH = 6;
+
+// Fallback for heavily-themed pages where NO document-unique selector
+// exists for the element at all — a WooCommerce + Elementor product page
+// renders `.woocommerce-Price-amount` ten times (header cart, upsells,
+// related products), so buildSelector() rightly refuses every candidate
+// and detection previously returned nothing for a price that is plainly
+// visible on the page.
+//
+// The runtime SDK reads a selector with querySelector(), which returns the
+// FIRST match — so a selector does not have to be unique to be correct, it
+// only has to have the intended element as its first match. That weaker
+// contract is what this builds, anchoring the element to an ancestor until
+// the first match lands on it, and it is verified here exactly the way the
+// runtime will evaluate it rather than assumed. A unique selector is still
+// strictly preferred and tried first; callers mark what this returns as
+// non-unique so its confidence can be capped accordingly.
+function buildFirstMatchSelector($, $el) {
+  // A NAMED unique selector (#id / [attr] / .class) is the best outcome and
+  // is taken immediately. The structural cascade is deliberately NOT tried
+  // yet: `p.price span.woocommerce-Price-amount` survives a theme reflow
+  // that `div:nth-of-type(1) > p:nth-of-type(1) > span:nth-of-type(1)`
+  // would not, so a scoped named selector is preferred over a unique
+  // positional one, and structural stays the last resort below.
+  const named = buildSelectorCascade($el, (selector, el) => isUniqueMatch($, selector, el), {
+    allowStructural: false,
+  });
+  if (named) return { ...named, unique: true };
+
+  const ownCandidates = ownSelectorCandidates($el);
+  for (const own of ownCandidates) {
+    if (firstMatchIs($, own, $el)) return { selector: own, tier: 'class', unique: false };
+  }
+
+  let $ancestor = $el.parent();
+  for (let depth = 0; depth < MAX_SCOPE_DEPTH && $ancestor.length; depth += 1) {
+    const tag = tagNameOf($ancestor);
+    if (!tag || tag === 'html') break;
+    for (const ancestorSelector of ownSelectorCandidates($ancestor)) {
+      for (const own of ownCandidates) {
+        const selector = `${ancestorSelector} ${own}`;
+        if (firstMatchIs($, selector, $el)) return { selector, tier: 'class', unique: false };
+      }
+    }
+    $ancestor = $ancestor.parent();
+  }
+
+  // Last resort: a unique positional path. Fragile, and reported as such.
+  const structural = buildSelector($, $el);
+  return structural ? { ...structural, unique: true } : null;
+}
+
+// The same idea, scoped to one already-matched container (an order row).
+// Per-item selectors are always evaluated relative to a single row, so
+// "first match inside this row" is exactly the contract the runtime SDK
+// applies — see queryText() in frontend/sdk/src/selectorTracking.js.
+//
+// The ordering matters: an ancestor-anchored selector is tried BEFORE the
+// element's bare tag, because a WooCommerce line item names the cell
+// (`td.product-name`) and not the link inside it. `td.product-name a`
+// keeps working when a "Remove" link is added to the cell; a bare `a` — or
+// the `a:nth-of-type(1)` the positional builder produces — silently starts
+// reading the wrong element.
+function buildFirstMatchSelectorWithin($, $scope, $el) {
+  const named = buildSelectorCascade($el, (selector, el) => isUniqueWithin($scope, selector, el), {
+    allowStructural: false,
+  });
+  if (named) return named;
+
+  const firstWithin = (selector) => {
+    try {
+      const found = $scope.find(selector);
+      return found.length > 0 && found.get(0) === $el.get(0);
+    } catch {
+      return false;
+    }
+  };
+
+  const ownCandidates = ownSelectorCandidates($el);
+  const tag = tagNameOf($el);
+  const namedOwn = ownCandidates.filter((candidate) => candidate !== tag);
+
+  for (const own of namedOwn) {
+    if (firstWithin(own)) return { selector: own, tier: 'class' };
+  }
+
+  let $ancestor = $el.parent();
+  for (let depth = 0; depth < MAX_SCOPE_DEPTH && $ancestor.length; depth += 1) {
+    if ($ancestor.get(0) === $scope.get(0)) break; // the row itself is the scope, not a prefix
+    for (const ancestorSelector of ownSelectorCandidates($ancestor)) {
+      for (const own of ownCandidates) {
+        const selector = `${ancestorSelector} ${own}`;
+        if (firstWithin(selector)) return { selector, tier: 'class' };
+      }
+    }
+    $ancestor = $ancestor.parent();
+  }
+
+  if (tag && firstWithin(tag)) return { selector: tag, tier: 'class' };
+
+  return buildSelectorWithin($scope, $el);
 }
 
 // selectorGenerator.js's tiers are a strict ordinal preference, not a
@@ -378,19 +517,40 @@ function structuredProductEvidence($) {
 
 // Smallest (most specific) element whose own text CONTAINS the target —
 // smallest wins so a giant wrapping <body> never beats the actual label.
+const HEADING_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+
+// A breadcrumb trail repeats the product's exact name in the site chrome,
+// and so does a header mini-cart for its price. Both are earlier in the
+// document than the real thing and just as "small", so without this they
+// win the tie and the saved selector ends up pointing at navigation
+// furniture that any theme change will move.
+function isInsideBreadcrumb($el) {
+  if (/breadcrumb/i.test($el.attr('class') || '')) return true;
+  return $el.parents().toArray().some((el) => /breadcrumb/i.test(el.attribs?.class || ''));
+}
+
 function findSmallestElementContaining($, predicate) {
   let best = null;
   let bestSize = Infinity;
+  let bestIsHeading = false;
   $('body *').each((_, el) => {
     const $el = $(el);
     const tag = tagNameOf($el);
     if (tag === 'script' || tag === 'style' || tag === undefined) return;
+    if (CHROME_TAGS.has(tag) || isInsideChrome($el) || isInsideBreadcrumb($el)) return;
     const text = $el.text().trim();
     if (!text || !predicate(text)) return;
+
     const size = $el.find('*').length;
-    if (size < bestSize) {
+    const isHeading = HEADING_TAGS.has(tag);
+    // Ties are broken toward a heading: when the breadcrumb span and the
+    // <h1> both wrap exactly the product name and neither has children,
+    // the <h1> is the one that means "this page is about this".
+    const better = size < bestSize || (size === bestSize && isHeading && !bestIsHeading);
+    if (better) {
       best = $el;
       bestSize = size;
+      bestIsHeading = isHeading;
     }
   });
   return best;
@@ -536,10 +696,11 @@ function isInsideChrome($el) {
 // The smallest element carrying a currency-marked number, ignoring page
 // chrome (a footer "Free shipping over $50" line must never win over the
 // actual product price in the page body).
-function findCurrencyPriceElement($) {
+function findCurrencyPriceElement($, $scope) {
   let best = null;
   let bestSize = Infinity;
-  $('body *').each((_, el) => {
+  const candidates = $scope && $scope.length ? $scope.find('*') : $('body *');
+  candidates.each((_, el) => {
     const $el = $(el);
     const tag = tagNameOf($el);
     if (!tag || CHROME_TAGS.has(tag)) return;
@@ -745,7 +906,38 @@ function detectProductName($, { hasOtherProductEvidence } = {}) {
 
 const PRICE_REGEX_VALUE = '([\\d,]+\\.?\\d*)';
 
-function detectProductPrice($) {
+// The element detectProductName would settle on, without building a
+// selector for it — used to anchor the product-summary scope below.
+function findProductTitleElement($) {
+  const platform = firstMatchingPattern($, PRODUCT_NAME_PATTERNS, ($el) => {
+    const text = $el.text().trim();
+    return text.length >= 2 && text.length <= 200 && !/^[\d.,\s]+$/.test(text);
+  });
+  if (platform) return platform.$el;
+  const h1 = $('h1').first();
+  return h1.length && h1.text().trim() ? h1 : undefined;
+}
+
+// The region of the page that is about THIS product, defined as the
+// closest common ancestor of the product title and the add-to-cart
+// control. On a themed storefront that region is the product summary, and
+// scoping the price search to it is what separates the real price from the
+// header-cart total, an upsell, or a related-products rail — all of which
+// carry the very same price class and, being earlier in the document,
+// would otherwise win. Returns nothing when either anchor is missing, in
+// which case callers simply search the whole document as before.
+function productSummaryScope($, $title, $cta) {
+  if (!$title || !$title.length || !$cta || !$cta.length) return undefined;
+  const ctaAncestors = new Set($cta.parents().toArray());
+  const common = $title.parents().toArray().find((el) => ctaAncestors.has(el));
+  if (!common) return undefined;
+  const tag = tagNameOf($(common));
+  // `body`/`html` is not a scope — it is the whole document.
+  if (tag === 'body' || tag === 'html' || tag === undefined) return undefined;
+  return $(common);
+}
+
+function detectProductPrice($, $scope) {
   // --- P1: structured data ---
   const structured = readStructuredProduct($);
   if (structured?.price !== undefined && Number.isFinite(structured.price)) {
@@ -774,14 +966,29 @@ function detectProductPrice($) {
   // Requires BOTH a price-ish name AND a number in the text — either signal
   // alone is too noisy (a "price" class with no number, or a number with no
   // price-ish naming, e.g. a product count).
-  const platform = firstMatchingPattern($, PRODUCT_PRICE_PATTERNS, ($el) => PRICE_PATTERN.test($el.text()));
+  const isPriceLike = ($el) => PRICE_PATTERN.test($el.text());
+  // The product-summary scope is searched FIRST so a header-cart total or
+  // an upsell carrying the same class never outranks the real price purely
+  // by appearing earlier in the document.
+  const platform =
+    ($scope ? firstMatchingPattern($, PRODUCT_PRICE_PATTERNS, isPriceLike, $scope) : null) ??
+    firstMatchingPattern($, PRODUCT_PRICE_PATTERNS, isPriceLike);
   if (platform) {
-    const built = buildSelector($, platform.$el);
+    const built = buildFirstMatchSelector($, platform.$el);
     if (built) {
+      // An exact platform fingerprint is as trustworthy as structured data
+      // about WHICH element this is — but the selector still has to survive
+      // in the page, so the tier downgrade applies either way. Reporting
+      // `high` for a `div:nth-of-type(1) > p:nth-of-type(1)` path just
+      // because the class that found it was WooCommerce's would be exactly
+      // the kind of false assurance the confidence badge exists to prevent.
+      const base = confidenceForSelector(platform.exact ? 'structured' : 'platform', built.tier);
       return {
         value: built.selector,
         regex: PRICE_REGEX_VALUE,
-        confidence: platform.exact ? 'high' : confidenceForSelector('platform', built.tier),
+        // A non-unique (first-match) selector is inherently more fragile
+        // than a unique one, whatever produced it — never reported as high.
+        confidence: built.unique ? base : lowerOf(base, 'medium'),
         source: platform.pattern.startsWith('[class*="price') || platform.pattern.startsWith('[id*="price')
           ? 'class-name'
           : 'platform-pattern',
@@ -789,16 +996,27 @@ function detectProductPrice($) {
     }
   }
 
-  // --- P3: a currency-marked number anywhere in the page body ---
-  const $currency = findCurrencyPriceElement($);
+  // --- P3: a currency-marked number, inside the product summary when one
+  // was identified, otherwise anywhere in the page body ---
+  const $currency = findCurrencyPriceElement($, $scope) ?? findCurrencyPriceElement($);
   if ($currency) {
-    const built = buildSelector($, $currency);
+    const built = buildFirstMatchSelector($, $currency);
     if (built) {
       return { value: built.selector, regex: PRICE_REGEX_VALUE, confidence: 'low', source: 'currency-pattern' };
     }
   }
 
   return undefined;
+}
+
+// Values a theme uses as an on/off switch rather than as an identifier.
+// "0" is included deliberately: no storefront platform issues product id 0,
+// and mistaking a flag for an id is uniquely destructive — every product on
+// the site would aggregate under the same id.
+const FLAG_LIKE_VALUE = /^(?:0|true|false|yes|no|on|off|null|undefined|none)$/i;
+
+function isFlagLikeValue(value) {
+  return FLAG_LIKE_VALUE.test(String(value).trim());
 }
 
 const PRODUCT_ID_ATTR_PATTERNS = [
@@ -874,6 +1092,14 @@ function detectProductId($, pathname) {
     // `data-product-id` with nothing in it would extract to empty at runtime.
     const attrValue = attr === 'value' ? $el.attr('value') : $el.attr(attr) ?? $el.attr('content');
     if (!attrValue) continue;
+    // ...that is a real identifier, on a real product element. WoodMart
+    // stamps `data-sku="0"` onto its header AJAX search form as an on/off
+    // FLAG, and taking that would have given every product on the site the
+    // id "0" — silently merging the entire catalogue into one row. An id
+    // for THIS product never lives in the site header, and is never a
+    // boolean.
+    if (isFlagLikeValue(attrValue)) continue;
+    if (isInsideChrome($el) || CHROME_TAGS.has(tagNameOf($el))) continue;
     const built = buildSelector($, $el);
     if (built) {
       const realAttr = attr === 'value' ? 'value' : $el.attr(attr) ? attr : 'content';
@@ -918,20 +1144,75 @@ function detectAddToCart($) {
 
 const LOGIN_TEXT = /\b(sign[\s-]?in|log[\s-]?in|login)\b/i;
 
+// A real login page is short: a form, its labels, and little else. Well
+// past this much visible text, whatever password field is present belongs
+// to a widget sitting alongside the page's actual content.
+const LOGIN_PAGE_MAX_TEXT_LENGTH = 1200;
+
+function isHiddenElement($el) {
+  if (!$el || !$el.length) return false;
+  if ($el.attr('hidden') !== undefined) return true;
+  const style = ($el.attr('style') || '').replace(/\s+/g, '').toLowerCase();
+  if (style.includes('display:none') || style.includes('visibility:hidden')) return true;
+  return /(^|[\s-])hidden([\s-]|$)/i.test($el.attr('class') || '');
+}
+
+// An explicit "you have to log in before you can see this" message. Kept
+// deliberately narrow: it must be log-in-to-VIEW/SEE/ACCESS, because
+// WooCommerce product pages routinely carry "You must be logged in to post
+// a review" in the reviews tab, and that says nothing about whether the
+// product itself is visible.
+// The gap is bounded and may not cross sentence punctuation, so the
+// "log in" and the "to view" have to belong to the SAME sentence — that is
+// what keeps "You must be logged in to post a review." (a different
+// sentence about a different thing) from ever matching.
+const LOGIN_WALL_TEXT =
+  /\b(?:log\s?in|logged\s+in|sign\s?in|signed\s+in)\b[^.!?]{0,60}?\bto\s+(?:view|see|access)\b/i;
+
+function visibleText($) {
+  const clone = $.root().clone();
+  clone.find('script, style, noscript').remove();
+  return clone.text().replace(/\s+/g, ' ').trim();
+}
+
 function looksLikeLoginPage($) {
-  if ($('form input[type="password"]').length > 0) return true;
+  // A page that SAYS it is gated is gated, and that outranks everything
+  // below — including structured data. This is what WooCommerce serves for
+  // an order-received page belonging to a registered customer ("Thank you.
+  // Your order has been received. Please log in to your account to view
+  // this order."): the confirmation wrapper renders, the order details do
+  // not, and the login form it ships carries the very same `hidden-form`
+  // class the theme uses for its header modal — so no amount of DOM
+  // visibility guessing can tell the two apart. The sentence can.
+  if (LOGIN_WALL_TEXT.test(visibleText($))) return true;
+
+  // Structured data declaring a Product outranks any login widget — the
+  // same precedence looksLikeListingPage already applies. WooCommerce,
+  // Shopify and most LMS themes ship a login form in a header dropdown or
+  // a hidden modal on EVERY page, product pages included; rejecting those
+  // outright (the previous behavior, which treated a single password field
+  // anywhere as proof) blocks the user from a page that is perfectly
+  // detectable.
+  if (structuredProductEvidence($)) return false;
+
   const title = $('title').first().text();
   const h1 = $('h1').first().text();
-  return LOGIN_TEXT.test(title) || LOGIN_TEXT.test(h1);
+  if (LOGIN_TEXT.test(title) || LOGIN_TEXT.test(h1)) return true;
+
+  const visiblePasswordFields = $('form input[type="password"]').filter(
+    (_, el) => !isHiddenElement($(el)) && !isHiddenElement($(el).closest('form'))
+  );
+  if (visiblePasswordFields.length === 0) return false;
+
+  // A password field is evidence only when the login form IS the page.
+  return visibleTextLength($) < LOGIN_PAGE_MAX_TEXT_LENGTH;
 }
 
 // Visible text only — script/style content never counts as "the page has
 // content," since that's exactly the JS-bundle text a client-rendered
 // shell is full of even when the actual page is empty.
 function visibleTextLength($) {
-  const clone = $.root().clone();
-  clone.find('script, style, noscript').remove();
-  return clone.text().replace(/\s+/g, ' ').trim().length;
+  return visibleText($).length;
 }
 
 const MIN_VISIBLE_TEXT_LENGTH = 200;
@@ -1123,14 +1404,18 @@ export function detectProductConfig(html, pageUrl) {
     }
   }
 
-  const price = detectProductPrice($);
+  const addToCart = detectAddToCart($);
+  if (addToCart) result.addToCartSelector = addToCart;
+
+  // Price is searched inside the product-summary region first (the closest
+  // common ancestor of the title and the add-to-cart control) — see
+  // productSummaryScope for why that matters on themed storefronts.
+  const $scope = productSummaryScope($, findProductTitleElement($), findAddToCartElement($)?.$el);
+  const price = detectProductPrice($, $scope);
   if (price) {
     result.productPriceSelector = { value: price.value, confidence: price.confidence, source: price.source };
     result.productPriceRegex = { value: price.regex, confidence: price.confidence, source: price.source };
   }
-
-  const addToCart = detectAddToCart($);
-  if (addToCart) result.addToCartSelector = addToCart;
 
   // Name is resolved last so its <h2> fallback can take the rest of the
   // page's findings into account (see detectProductName).
@@ -1362,6 +1647,31 @@ const ORDER_ITEM_PATTERNS = [
   '.order-item', '.line-item', '.order-line', '.cart-item', '.product-line-item',
 ];
 
+// Where a line-item's price and quantity live, searched RELATIVE to one
+// already-matched row. Ordered most specific first, exactly like the
+// page-level pattern lists, and every candidate is still validated against
+// the row's real text before being accepted.
+const ORDER_ITEM_PRICE_PATTERNS = [
+  '.woocommerce-Price-amount', 'td.product-total', 'td.woocommerce-table__product-total',
+  '[class*="product-total" i]', '[class*="item-total" i]', '[class*="line-total" i]',
+  '[data-item-price]', '[data-testid*="line-price" i]',
+  '[class*="price" i]', '[class*="amount" i]', '[class*="total" i]',
+];
+
+const ORDER_ITEM_NAME_PATTERNS = [
+  'td.product-name a', '.woocommerce-table__product-name a', 'td.product-name',
+  '[class*="product-name" i] a', '[class*="item-name" i]', '[class*="line-item-title" i]',
+  '[data-item-name]', '[data-testid*="item-name" i]',
+  '[class*="product-name" i]', '[class*="product-title" i]',
+];
+
+const ORDER_ITEM_QTY_PATTERNS = [
+  'strong.product-quantity', '.product-quantity', 'td.product-quantity',
+  '[class*="product-quantity" i]', '[class*="item-quantity" i]', '[class*="line-quantity" i]',
+  '[data-item-quantity]', '[data-testid*="quantity" i]',
+  '[class*="quantity" i]', '[class*="qty" i]',
+];
+
 // Repeat containers that carry meaning even with no class attribute — a
 // plain <tr> order-summary table is extremely common and was previously
 // invisible to detection, which only ever grouped class-bearing siblings.
@@ -1460,35 +1770,72 @@ function detectOrderItems($) {
     const $el = $(el);
     if ($el.find('*').length === 0 && CLEAN_NUMBER.test($el.text().trim())) $price = $el;
   });
+
+  // A clean numeric leaf is still preferred, but it is no longer the only
+  // acceptable answer. WooCommerce renders a line-item total as
+  //   <td class="product-total"><span class="woocommerce-Price-amount">
+  //     <bdi>229.99<span class="…currencySymbol">৳</span></bdi></span></td>
+  // — the <bdi> has a child so it is not a leaf, and the only leaf inside
+  // holds just the currency symbol. Nothing matched, and a real price sat
+  // there undetected. The runtime SDK now reads the first numeric token out
+  // of a decorated value (parseNumber in selectorTracking.js), so
+  // "229.99৳" is perfectly usable and worth returning.
+  if (!$price) {
+    const priceCandidate = firstMatchingPattern(
+      $,
+      ORDER_ITEM_PRICE_PATTERNS,
+      ($el) => PRICE_PATTERN.test($el.text()),
+      $first
+    );
+    if (priceCandidate) $price = priceCandidate.$el;
+  }
   if ($price) {
-    const built = buildSelectorWithin($first, $price);
+    const built = buildFirstMatchSelectorWithin($, $first, $price);
     if (built) {
       result.orderItemPriceSelector = { value: built.selector, confidence: TIER_CONFIDENCE[built.tier], source };
     }
   }
 
-  // Name: the leaf element with the longest non-numeric text — the
-  // product title is reliably the longest label in a line-item row.
+  // Name: a known line-item title location first, so the saved selector is
+  // `td.product-name a` rather than a positional `a:nth-of-type(1)` that
+  // any extra link in the cell would displace.
   let $name = null;
-  let longest = 0;
-  $first.find('*').each((_, el) => {
-    const $el = $(el);
-    if ($el.find('*').length > 0) return; // leaves only
-    const text = $el.text().trim();
-    if (text && !/^[\d.,\s]+$/.test(text) && text.length > longest) {
-      longest = text.length;
-      $name = $el;
-    }
-  });
+  const nameCandidate = firstMatchingPattern(
+    $,
+    ORDER_ITEM_NAME_PATTERNS,
+    ($el) => {
+      if ($price && $el.get(0) === $price.get(0)) return false;
+      // No need to exclude the quantity element explicitly: a quantity
+      // renders as "× 1" / "3", and the shape test below rejects anything
+      // that is only digits and quantity decoration.
+      const text = $el.text().trim();
+      return text.length >= 2 && text.length <= 200 && !/^[\d.,\s×x]+$/i.test(text);
+    },
+    $first
+  );
+  if (nameCandidate) $name = nameCandidate.$el;
+
+  // Otherwise the leaf element with the longest non-numeric text — the
+  // product title is reliably the longest label in a line-item row.
+  if (!$name) {
+    let longest = 0;
+    $first.find('*').each((_, el) => {
+      const $el = $(el);
+      if ($el.find('*').length > 0) return; // leaves only
+      const text = $el.text().trim();
+      if (text && !/^[\d.,\s]+$/.test(text) && text.length > longest) {
+        longest = text.length;
+        $name = $el;
+      }
+    });
+  }
   if ($name) {
-    const built = buildSelectorWithin($first, $name);
+    const built = buildFirstMatchSelectorWithin($, $first, $name);
     if (built) result.orderItemNameSelector = { value: built.selector, confidence: TIER_CONFIDENCE[built.tier], source };
   }
 
-  // Quantity: a leaf element whose entire text is a plain small integer —
-  // same "no regex field to clean it up at runtime" constraint as price
-  // above, so a "×2"-style prefix is deliberately NOT accepted here even
-  // though it's a common display convention; it would just parse as NaN.
+  // Quantity: a leaf whose entire text is a plain small integer is still
+  // the cleanest answer and is taken first.
   let $qty = null;
   $first.find('*').each((_, el) => {
     if ($qty) return;
@@ -1498,8 +1845,29 @@ function detectOrderItems($) {
     const text = $el.text().trim();
     if (/^\d{1,3}$/.test(text)) $qty = $el;
   });
+
+  // Failing that, the near-universal display conventions: "× 2", "x2",
+  // "Qty: 2". These were previously refused because the runtime had no way
+  // to strip the decoration; it does now, and refusing them meant losing
+  // the quantity on every WooCommerce order (`<strong
+  // class="product-quantity">&times;&nbsp;1</strong>`). The bound on length
+  // keeps this from swallowing a sentence that merely contains a digit.
+  if (!$qty) {
+    const DECORATED_QTY = /^(?:qty|quantity|×|x)?[\s:.·]*\d{1,3}$|^\d{1,3}\s*(?:pcs?|items?|units?)$/i;
+    const qtyCandidate = firstMatchingPattern(
+      $,
+      ORDER_ITEM_QTY_PATTERNS,
+      ($el) => {
+        if ($price && $el.get(0) === $price.get(0)) return false;
+        const text = $el.text().trim().replace(/ /g, ' ').replace(/\s+/g, ' ');
+        return text.length <= 20 && DECORATED_QTY.test(text);
+      },
+      $first
+    );
+    if (qtyCandidate) $qty = qtyCandidate.$el;
+  }
   if ($qty) {
-    const built = buildSelectorWithin($first, $qty);
+    const built = buildFirstMatchSelectorWithin($, $first, $qty);
     if (built) {
       result.orderItemQtySelector = { value: built.selector, confidence: TIER_CONFIDENCE[built.tier], source };
     }
@@ -1527,7 +1895,7 @@ function detectOrderItems($) {
     for (const attr of attrCandidates) {
       $idEl = $first.find(`[${attr}]`).first();
       if ($idEl.length) {
-        const built = buildSelectorWithin($first, $idEl);
+        const built = buildFirstMatchSelectorWithin($, $first, $idEl);
         if (built) {
           result.orderItemIdSelector = {
             value: `${built.selector}::attr(${attr})`,

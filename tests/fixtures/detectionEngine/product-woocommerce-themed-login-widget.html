@@ -1,0 +1,96 @@
+<!--
+  A real-world WooCommerce + page-builder product page, reduced to the two
+  traits that used to defeat detection on academy.adspillar.com:
+
+  1. The theme renders a customer login form on EVERY page (one in the
+     header account dropdown, one as a hidden modal). A single password
+     field anywhere used to classify the whole page as a sign-in page and
+     reject it outright, even though this is plainly a product page.
+
+  2. The price class appears FOUR times — a mini-cart total, two related
+     products, and the real one. The real price is neither the first in the
+     document nor uniquely selectable by class, so detection has to scope
+     the search to the product summary (the common ancestor of the title
+     and the add-to-cart button) and then build a selector whose FIRST
+     match is that element.
+-->
+<html>
+<head>
+  <title>AI Data Science &amp; Machine Learning with Python | Academy</title>
+  <meta property="og:type" content="article" />
+  <script type="application/ld+json">
+    {"@context":"https://schema.org/","@type":"Product",
+     "name":"AI Data Science & Machine Learning with Python",
+     "url":"https://academy.example.com/product/ai-data-science/",
+     "description":"A practical, project-based course covering the full data science workflow."}
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <nav>Home | Courses | About | Contact</nav>
+
+    <div class="header-account-dropdown">
+      <form class="login woocommerce-form woocommerce-form-login" action="/my-account/">
+        <label>Username or email <input type="text" name="username" /></label>
+        <label>Password <input type="password" name="password" /></label>
+        <button type="submit" name="login">Log in</button>
+      </form>
+    </div>
+
+    <div class="mini-cart">
+      <span class="woocommerce-Price-amount amount">22.99&#2547;</span>
+    </div>
+  </header>
+
+  <div class="login-modal hidden-form" aria-hidden="true">
+    <form class="login woocommerce-form woocommerce-form-login hidden-form" action="/my-account/">
+      <label>Username or email <input type="text" name="username" /></label>
+      <label>Password <input type="password" name="password" /></label>
+      <button type="submit" name="login">Log in</button>
+    </form>
+  </div>
+
+  <main>
+    <div class="wd-sticky-container elementor-element">
+      <h1 class="product_title entry-title">AI Data Science &amp; Machine Learning with Python</h1>
+
+      <div class="elementor-element wd-single-price">
+        <p class="price"><span class="woocommerce-Price-amount amount">49.99&#2547;</span></p>
+      </div>
+
+      <p class="course-summary">
+        Learn the complete data science workflow with Python: cleaning and exploring real datasets,
+        building and evaluating models, and shipping the result. Includes lifetime access, downloadable
+        notebooks, and a certificate of completion on finishing every graded project in the course.
+      </p>
+
+      <form class="variations_form cart" data-product_id="8842">
+        <button type="submit" name="add-to-cart" value="8842" class="single_add_to_cart_button button alt">
+          Add to cart
+        </button>
+      </form>
+    </div>
+  </main>
+
+  <section class="related-products">
+    <h2>Related courses</h2>
+    <p>Students who enrolled in this course also took the following programmes from our catalogue.</p>
+    <div class="related-grid">
+      <div class="related-card">
+        <a href="/product/python-basics/">Python Basics</a>
+        <span class="woocommerce-Price-amount amount">29.99&#2547;</span>
+      </div>
+      <div class="related-card">
+        <a href="/product/sql-for-analysts/">SQL for Analysts</a>
+        <span class="woocommerce-Price-amount amount">45.00&#2547;</span>
+      </div>
+      <div class="related-card">
+        <a href="/product/deep-learning/">Deep Learning</a>
+        <span class="woocommerce-Price-amount amount">89.00&#2547;</span>
+      </div>
+    </div>
+  </section>
+
+  <footer>&copy; 2026 Academy. All rights reserved. Contact support for enrolment questions.</footer>
+</body>
+</html>
