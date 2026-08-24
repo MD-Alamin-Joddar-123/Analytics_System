@@ -71,4 +71,11 @@ export const ErrorCodes = Object.freeze({
   // normal 200 response (productError/orderError), by design, since a
   // classification failure on ONE side must never fail the whole request.
   DETECT_PRODUCT_URL_LOOKS_LIKE_LISTING: 'DETECT_PRODUCT_URL_LOOKS_LIKE_LISTING',
+  // Browser-rendered-DOM detection sessions (tracking.js reports what it
+  // found in the LIVE page during a temporary, expiring session)
+  DETECTION_SESSION_INVALID_BODY: 'DETECTION_SESSION_INVALID_BODY',
+  DETECTION_SESSION_NOT_FOUND: 'DETECTION_SESSION_NOT_FOUND',
+  DETECTION_SESSION_EXPIRED: 'DETECTION_SESSION_EXPIRED',
+  DETECTION_SESSION_URL_MISMATCH: 'DETECTION_SESSION_URL_MISMATCH',
+  DETECTION_SESSION_INVALID_STAGE: 'DETECTION_SESSION_INVALID_STAGE',
 });
