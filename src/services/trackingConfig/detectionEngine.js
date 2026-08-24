@@ -6,7 +6,7 @@ import * as cheerio from 'cheerio';
 // selector that merely "looks right" (§10's explicit requirement). Every
 // selector this module hands back has already been verified, by actually
 // querying the parsed document, to match exactly what it's supposed to
-// match — the same discipline `frontend/src/utils/selectorGenerator.ts`
+// match — the same discipline `frontend/src/utils/selectorGenerator.js`
 // already established for the client-side picker, ported here to
 // cheerio's query engine so it works against a server-fetched document.
 //
@@ -63,7 +63,7 @@ function isUniqueWithin($scope, selector, $el) {
 }
 
 // The same id > semantic-attribute > class > structural-position cascade
-// selectorGenerator.ts already uses client-side, ported to cheerio.
+// selectorGenerator.js already uses client-side, ported to cheerio.
 // `matchFn` lets callers scope uniqueness to a container (order-item
 // fields) instead of the whole document (page-level fields).
 function buildSelectorCascade($el, matchFn) {
@@ -113,7 +113,7 @@ function buildSelectorWithin($scope, $el) {
   return buildSelectorCascade($el, (selector, el) => isUniqueWithin($scope, selector, el));
 }
 
-// selectorGenerator.ts's tiers are a strict ordinal preference, not a
+// selectorGenerator.js's tiers are a strict ordinal preference, not a
 // numeric score — the same ordinal is reused here, mapped onto this
 // feature's high/medium/low vocabulary so the dashboard can show a single
 // consistent confidence badge regardless of which detector produced it.
@@ -631,7 +631,7 @@ function detectOrderItems($) {
   // (`<div class="order-item" data-product-id="...">`), not a descendant
   // — the runtime SDK's queryText() checks the container element itself
   // against the selector before searching its children (see
-  // frontend/sdk/src/selectorTracking.ts), so a plain attribute-presence
+  // frontend/sdk/src/selectorTracking.js), so a plain attribute-presence
   // selector here is both correct and simplest: it matches every row via
   // that self-check, no per-instance uniqueness needed since this selector
   // is always queried relative to ONE already-matched container.

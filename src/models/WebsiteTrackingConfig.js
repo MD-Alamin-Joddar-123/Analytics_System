@@ -26,7 +26,7 @@ const websiteTrackingConfigSchema = new mongoose.Schema(
     websiteId: { type: String, required: true, trim: true },
 
     // Selects which of the SDK's already-existing detection strategies
-    // (see domEvents.ts/jsonld.ts) this website uses. 'selector_regex' is
+    // (see domEvents.js/jsonld.js) this website uses. 'selector_regex' is
     // this fix's new config-driven strategy; the other three name
     // strategies the SDK already implements independently, so choosing
     // them here is a routing decision, not something this schema
@@ -83,7 +83,7 @@ const websiteTrackingConfigSchema = new mongoose.Schema(
     // "price" from one row is never paired with "quantity" from another.
     orderItemContainerSelector: { type: String, trim: true, maxlength: 500 },
     // Per-item product id — same "::attr(name)" convention as productIdSelector
-    // (see trackingConfigDetection.ts's parseSelector) since an item's real
+    // (see trackingConfigDetection.js's parseSelector) since an item's real
     // catalog id is usually an attribute (data-product-id, an <a href>),
     // never visible text. Without this, a purchase's line items would have
     // no way to link back to the SAME product's product_view/add_to_cart

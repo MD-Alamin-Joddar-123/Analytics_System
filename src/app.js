@@ -16,7 +16,7 @@ import collectRoutes from './routes/collect.routes.js';
 import trackingConfigPublicRoutes from './routes/trackingConfigPublic.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// frontend/sdk's Vite build (see frontend/sdk/vite.config.ts) outputs
+// frontend/sdk's Vite build (see frontend/sdk/vite.config.js) outputs
 // directly here — `npm run build` in that package produces this exact
 // file, no manual copy step.
 const TRACKING_SCRIPT_PATH = path.join(__dirname, '..', 'public', 'tracking.js');
