@@ -785,3 +785,57 @@ describe('orderIdRegexFor shapes — hashed, hex, and digit-word ids each extrac
     assert.equal(extract('([A-Za-z-]*\\d[A-Za-z0-9_-]*)', 'Order ID: ORD-77-B2'), 'ORD-77-B2');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: a genuine Django/Ogani-template product page
+// (https://online-fish-market-six.vercel.app/products/rui/) was classified as
+// listing_page because five sibling Bootstrap .container wrappers each
+// happened to contain some digit and some link in their subtrees and were
+// therefore accepted as a "repeated product-card grid". The page's real
+// signals were all too weak to override it: the only purchase control is an
+// anchor labelled "ADD TO CARD" (typo), the title is a bare <h3> with no h1,
+// and prices render without any currency symbol.
+// ---------------------------------------------------------------------------
+describe('fixture: product-bem-details-tabs.html — BEM/Django product page with layout containers', () => {
+  const HTML = loadFixture('product-bem-details-tabs.html');
+  const result = detectProductConfig(HTML, 'https://fish.example.com/products/rui/');
+
+  test('is NOT misclassified as a listing despite five sibling .container wrappers', () => {
+    // Must reach field detection rather than throwing DetectionClassificationError.
+    assert.ok(result.productPriceSelector);
+  });
+
+  test('layout containers are not treated as repeated product cards; the related rail is', () => {
+    // Indirectly proven by the two assertions above and below: if the
+    // containers still counted as cards AND no override fired, this fixture
+    // would have thrown listing_page before any selector was produced.
+    assert.equal(value(result.productUrlPattern), '/products/*');
+  });
+
+  test('title from the bare <h3> via corroborated heading fallback — low confidence', () => {
+    assert.equal(result.productNameSelector.source, 'heading');
+    assert.equal(result.productNameSelector.confidence, 'low');
+    assert.equal(textAt(HTML, value(result.productNameSelector)), 'Rui');
+  });
+
+  test('BEM price class detected even though the amount carries no currency symbol', () => {
+    assert.equal(value(result.productPriceSelector), 'div.product__details__price');
+    assert.equal(result.productPriceSelector.confidence, 'medium');
+    const extracted = new RegExp(value(result.productPriceRegex)).exec(textAt(HTML, value(result.productPriceSelector)));
+    // Known limitation, documented here on purpose: the regex grabs the
+    // FIRST number in the element, which is the <del> strikethrough original
+    // when a discount precedes the current price at runtime.
+    assert.equal(extracted[1], '8000.00');
+  });
+
+  test('"ADD TO CARD" typo control recognized as the add-to-cart button — low confidence', () => {
+    assert.equal(result.addToCartSelector.source, 'button-text');
+    assert.equal(result.addToCartSelector.confidence, 'low');
+    assert.equal(textAt(HTML, value(result.addToCartSelector)), 'ADD TO CARD');
+  });
+
+  test('no id markup or slug segment falls back to the URL id source', () => {
+    assert.equal(result.productIdSource.value, 'url');
+    assert.equal(result.productIdSource.confidence, 'low');
+  });
+});

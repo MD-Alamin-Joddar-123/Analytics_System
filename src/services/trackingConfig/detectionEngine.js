@@ -559,8 +559,12 @@ function findCurrencyPriceElement($) {
 // Original pre-layer wording plus the other calls-to-action that mean the
 // same thing on a product page. "Buy now"/"order now" are kept distinctly
 // weaker signals than "add to cart" but they are still the single most
-// reliable purchase-intent control when nothing else is present.
-const ADD_TO_CART_TEXT = /add.{0,2}to.{0,2}cart|single_add_to_cart|add.{0,2}to.{0,2}(bag|basket)|buy.{0,2}now|order.{0,2}now|purchase.{0,2}now/i;
+// reliable purchase-intent control when nothing else is present. The
+// "add to card" variant is deliberate: storefronts in the wild ship this
+// exact typo (a Django/Ogani-template fish market does), and it never
+// means anything else on an actionable element.
+const ADD_TO_CART_TEXT =
+  /add.{0,2}to.{0,2}cart|single_add_to_cart|add.{0,2}to.{0,2}(bag|basket)|add.{0,2}to.{0,2}card|buy.{0,2}now|order.{0,2}now|purchase.{0,2}now/i;
 
 function findAddToCartByText($) {
   let best = null;
@@ -650,11 +654,13 @@ function detectProductName($, { hasOtherProductEvidence } = {}) {
   }
 
   // A page with no <h1> at all still has a "main heading" — but promoting
-  // an <h2> is only defensible once something ELSE on the page has already
-  // confirmed this is a product (a price or an add-to-cart control).
-  // Without that, an <h2> is just as likely to be a section header.
+  // an <h2>/<h3> is only defensible once something ELSE on the page has
+  // already confirmed this is a product (a price or an add-to-cart
+  // control). Without that, a lower-level heading is just as likely to be
+  // a section header. Django/Ogani-template shops title their product in
+  // an <h3> with no other name markup anywhere.
   if (hasOtherProductEvidence) {
-    const heading = $('[role="heading"][aria-level="1"], h2').first();
+    const heading = $('[role="heading"][aria-level="1"], h2, h3').first();
     if (heading.length && heading.text().trim()) {
       const built = buildSelector($, heading);
       if (built) return { value: built.selector, confidence: 'low', source: 'heading' };
@@ -880,16 +886,39 @@ function groupRepeatedSiblings($, { allowClasslessTags } = {}) {
 }
 
 // A product LISTING/grid page's signature: several elements sharing the
-// same parent/tag/class, each wrapping both a link and a price.
+// same parent/tag/class, each wrapping both a link and a price. Two guards
+// keep generic layout scaffolding from impersonating cards:
+//
+//   - COMPACTNESS: a real card is a small self-contained unit; a
+//     `.container` wrapping a whole page section carries hundreds of
+//     characters of inherited subtree text (this exact shape — five
+//     sibling Bootstrap containers on a Django/Ogani-template shop — was
+//     once accepted as a "grid" and got a genuine product page rejected).
+//   - UNIFORMITY: true cards hold near-equal amounts of text (name +
+//     price); mixed-purpose siblings like header/nav/footer containers
+//     vary wildly in length.
+const MAX_CARD_TEXT_LENGTH = 400;
+const MAX_CARD_LENGTH_VARIANCE_RATIO = 6;
+
 function findCardLikeGroups($) {
-  return groupRepeatedSiblings($).filter(
-    (elements) =>
-      elements.length >= 3 &&
-      elements.every((el) => {
-        const $el = $(el);
-        return PRICE_PATTERN.test($el.text()) && $el.find('a').length > 0;
-      })
-  );
+  return groupRepeatedSiblings($)
+    .filter((elements) => {
+      const lengths = elements.map((el) => $(el).text().replace(/\s+/g, ' ').trim().length);
+      const shortest = Math.min(...lengths);
+      return (
+        shortest > 0 &&
+        Math.max(...lengths) <= MAX_CARD_TEXT_LENGTH &&
+        Math.max(...lengths) / shortest <= MAX_CARD_LENGTH_VARIANCE_RATIO
+      );
+    })
+    .filter(
+      (elements) =>
+        elements.length >= 3 &&
+        elements.every((el) => {
+          const $el = $(el);
+          return PRICE_PATTERN.test($el.text()) && $el.find('a').length > 0;
+        })
+    );
 }
 
 // A page with strong single-product evidence is never classified as a
@@ -906,10 +935,28 @@ function findCardLikeGroups($) {
 //      product pages carrying a recommendations grid get wrongly rejected.
 //   3. A single <h1> that is likewise outside every card, paired with a
 //      price outside every card.
+//
+// Set DETECTION_DEBUG=1 to print exactly how each rule evaluated for a
+// given document (to stderr; silent in normal operation and in tests).
+const DEBUG = process.env.DETECTION_DEBUG === '1';
+function trace(...parts) {
+  if (!DEBUG) return;
+  console.error('[detection-trace]', ...parts);
+}
+
+function describeCardGroup($, elements) {
+  const $first = $(elements[0]);
+  const cls = String($first.attr('class') || '').split(/\s+/)[0] || '(no class)';
+  return `${tagNameOf($first)}.${cls}×${elements.length}`;
+}
+
 function looksLikeListingPage($) {
-  if (structuredProductEvidence($)) return false;
+  const structured = structuredProductEvidence($);
+  trace('structured-product-evidence =', structured ?? 'none');
+  if (structured) return false;
 
   const cardGroups = findCardLikeGroups($);
+  trace('card-like groups =', cardGroups.length, cardGroups.map((els) => describeCardGroup($, els)));
   if (cardGroups.length === 0) return false;
 
   const cardElements = new Set(cardGroups.flat());
@@ -920,12 +967,25 @@ function looksLikeListingPage($) {
   };
 
   const cta = findAddToCartElement($);
+  trace(
+    'add-to-cart control =',
+    cta ? `${cta.source} (${cta.$el.attr('class') || tagNameOf(cta.$el)}), outside-cards=${isOutsideEveryCard(cta.$el)}` : 'NONE FOUND'
+  );
   if (cta && isOutsideEveryCard(cta.$el)) return false;
 
+  const h1Count = $('h1').length;
   const $h1 = $('h1').first();
   const $price = findCurrencyPriceElement($);
-  if ($('h1').length === 1 && isOutsideEveryCard($h1) && $price && isOutsideEveryCard($price)) return false;
+  trace(
+    'h1 count =', h1Count,
+    '| h1 outside-cards =', $h1.length ? isOutsideEveryCard($h1) : 'n/a',
+    '| currency price found =', Boolean($price && $price.length),
+    '| price outside-cards =', $price && $price.length ? isOutsideEveryCard($price) : 'n/a',
+    '| smallest price text =', JSON.stringify($price?.text()?.trim().slice(0, 50))
+  );
+  if (h1Count === 1 && $h1.length && isOutsideEveryCard($h1) && $price && $price.length && isOutsideEveryCard($price)) return false;
 
+  trace('=> classified LISTING: repeated card-like group(s) present, no single-product evidence overrode them');
   return true;
 }
 

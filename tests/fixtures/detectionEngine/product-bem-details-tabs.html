@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Rui — Online Fish Market</title>
+</head>
+<body>
+  <div class="page">
+    <!-- Five sibling Bootstrap-style layout containers: the exact shape
+         that used to be miscounted as a "repeated product-card grid"
+         because every wrapper subtree happened to contain some digit and
+         some link. Each one below carries a number and an anchor on
+         purpose — this fixture must keep them from impersonating cards. -->
+    <div class="container">
+      <div class="header__top">
+        <div class="header__top__left">Free shipping on prepaid orders above Tk 2000 inside Dhaka city</div>
+        <div class="header__top__right">
+          <a href="/accounts/login/"><i class="fa fa-user"></i> Account</a>
+          <a href="/cart/"><i class="fa fa-shopping-cart"></i> <span>0</span></a>
+        </div>
+      </div>
+    </div>
+    <div class="container">
+      <nav class="header__menu">
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="/shop/">Shop</a></li>
+          <li><a href="/shop/category/fish/">Fish</a></li>
+          <li><a href="/pages/contact/">Contact</a></li>
+        </ul>
+      </nav>
+      <div class="header__cart">
+        <div class="header__cart__price"></div>
+      </div>
+    </div>
+    <div class="container">
+      <div class="hero__search">
+        <form action="/shop/" method="get">
+          <input type="text" name="q" placeholder="Search fresh fish..." />
+          <button type="submit">Search</button>
+        </form>
+        <a href="/shop/offers/">Seasonal offers up to 20% off this week</a>
+      </div>
+    </div>
+    <div class="container">
+      <section class="product__details">
+        <div class="row">
+          <div class="col-lg-6 col-md-6">
+            <div class="product__details__pic">
+              <img src="/media/fish/rui.jpg" alt="Rui" />
+            </div>
+          </div>
+          <div class="col-lg-6 col-md-6">
+            <div class="product__details__text">
+              <h3>Rui</h3>
+              <div class="product__details__rating">
+                <i class="fa fa-star"></i>
+                <i class="fa fa-star"></i>
+                <i class="fa fa-star"></i>
+                <i class="fa fa-star"></i>
+                <i class="fa fa-star-half-o"></i>
+                <span>(0 reviews)</span>
+              </div>
+              <div class="product__details__price text-success">
+                <span class="text-danger"><del>8000.00</del></span>
+                7995.00 (5.00% Off)
+              </div>
+              <p>Fresh river Rui cleaned and cut to order, delivered chilled within 48 hours.</p>
+              <div class="product__details__quantity">
+                <div class="quantity"><input type="text" value="1" /></div>
+              </div>
+              <!-- The site really ships this label: a typo, and the ONLY
+                   purchase control on the page. -->
+              <a href="/cart/item/29b0c84e-8b62-4cc7-b58c-2b606ae3f843" class="primary-btn">ADD TO CARD</a>
+              <ul>
+                <li><b>Availability</b> <span>In Stock</span></li>
+                <li><b>Weight</b> <span>Unlimited kg</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div class="container">
+      <div class="product__details__tab">
+        <h6>Description</h6>
+        <div class="product__details__tab__desc">
+          <p>Rui (Labeo rohita) is the most popular carp in Bangladeshi kitchens, prized for its
+          firm texture and rich flavor in traditional curries.</p>
+        </div>
+        <h6>Infomation</h6>
+        <div class="product__details__tab__desc">
+          <p><b>Weight</b> Unlimited kg. <b>Shipping</b> within 48 hours, chilled van delivery.</p>
+        </div>
+        <h6>Customer Says</h6>
+        <div class="product__details__tab__desc">
+          <p>No reviews yet for this fish. Be the first to share how your order arrived.</p>
+        </div>
+      </div>
+      <div class="related__product">
+        <h6>Related Products</h6>
+        <div class="row">
+          <div class="col-lg-3"><a href="/products/katla/">Katla</a> <span>520.00</span></div>
+          <div class="col-lg-3"><a href="/products/hilsa/">Hilsa</a> <span>1250.00</span></div>
+          <div class="col-lg-3"><a href="/products/pabda/">Pabda</a> <span>610.00</span></div>
+        </div>
+      </div>
+    </div>
+    <footer>© 2026 Online Fish Market | <a href="/pages/about/">About Us</a> | Delivery across Bangladesh</footer>
+  </div>
+</body>
+</html>
