@@ -1312,3 +1312,57 @@ describe('fixture: order-received-woocommerce-guest.html — decorated line-item
     assert.equal(detected.orderItemIdSelector.confidence, 'high');
   });
 });
+
+// A product page and a catalogue page use DIFFERENT add-to-cart controls,
+// and Auto Detect only ever sees one of them. A selector built from the
+// product page silently ignores every add-to-cart made straight from the
+// shop grid — which is how most people actually shop.
+describe('add-to-cart detection covers the catalogue button too', () => {
+  const PRODUCT_PAGE = `
+    <html><body>
+      <nav>Home | Shop | About | Contact</nav>
+      <h1 class="product_title">Battery Operated LED Lights</h1>
+      <p>Warm white battery operated fairy lights on a flexible copper wire, suitable for indoor decoration
+      all year round, with a timer function and two brightness settings for any room in the house.</p>
+      <p class="price"><span class="woocommerce-Price-amount amount">19.99</span></p>
+      <form class="cart"><button type="submit" name="add-to-cart" value="115">Add to cart</button></form>
+      <section class="related">
+        <h2>Related products</h2>
+        <p>Customers who bought this item also bought these seasonal decorations from our catalogue.</p>
+        <ul class="products">
+          <li class="product"><a href="/product/mug/">Mug</a><span class="price">60.00</span>
+            <a href="/shop/?add-to-cart=118" class="add_to_cart_button" data-product_id="118">Add to cart</a></li>
+          <li class="product"><a href="/product/bauble/">Bauble</a><span class="price">89.99</span>
+            <a href="/shop/?add-to-cart=119" class="add_to_cart_button" data-product_id="119">Add to cart</a></li>
+        </ul>
+      </section>
+      <footer>&copy; 2026 Academy. All rights reserved.</footer>
+    </body></html>`;
+
+  const URL = 'https://academy.example.com/product/battery-operated-led-lights/';
+
+  test('the emitted selector matches BOTH the product button and the catalogue links', () => {
+    const result = detectProductConfig(PRODUCT_PAGE, URL);
+    const selector = value(result.addToCartSelector);
+    const $ = cheerio.load(PRODUCT_PAGE);
+
+    // 1 product-page button + 2 catalogue links.
+    assert.equal($(selector).length, 3, `"${selector}" should match the product button and both catalogue links`);
+  });
+
+  test('the primary product-page button is still part of the selector', () => {
+    const result = detectProductConfig(PRODUCT_PAGE, URL);
+    const $ = cheerio.load(PRODUCT_PAGE);
+    const matched = $(value(result.addToCartSelector)).toArray();
+    assert.ok(
+      matched.some((el) => $(el).attr('name') === 'add-to-cart'),
+      'the single-product control must not be dropped in favour of the catalogue one'
+    );
+  });
+
+  test('a page with no catalogue counterpart keeps the plain single selector', () => {
+    const PLAIN = PRODUCT_PAGE.replace(/<section class="related">[\s\S]*<\/section>/, '');
+    const result = detectProductConfig(PLAIN, URL);
+    assert.doesNotMatch(value(result.addToCartSelector), /,/, 'nothing to widen — no second clause should appear');
+  });
+});

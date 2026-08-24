@@ -47,6 +47,12 @@ export const env = Object.freeze({
   // asset-laden load, and must never hang a request indefinitely.
   detectFetchTimeoutMs: Number(process.env.DETECT_FETCH_TIMEOUT_MS) || 8000,
   detectMaxRedirects: Number(process.env.DETECT_MAX_REDIRECTS) || 3,
+
+  // How long a storefront may cache GET /api/config/:websiteId. Short by
+  // default because an admin edits this config and then immediately checks
+  // their own site to confirm it took effect — see the controller for the
+  // full rationale. Raise it if config-fetch volume ever becomes a concern.
+  trackingConfigCacheSeconds: Number(process.env.TRACKING_CONFIG_CACHE_SECONDS) || 30,
   detectMaxResponseBytes: Number(process.env.DETECT_MAX_RESPONSE_BYTES) || 2 * 1024 * 1024,
   isProduction: process.env.NODE_ENV === 'production',
   isDevelopment: (process.env.NODE_ENV || 'development') === 'development',

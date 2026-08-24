@@ -4,6 +4,7 @@ import { createApp } from '../src/app.js';
 import { websiteRepository } from '../src/repositories/website.repository.js';
 import { websiteTrackingConfigRepository } from '../src/repositories/websiteTrackingConfig.repository.js';
 import { makeFakeWebsite } from './helpers/fakeWebsite.js';
+import { env } from '../src/config/env.js';
 
 const WEBSITE_ID = 'a1b2c3d4e5f60718';
 
@@ -99,8 +100,21 @@ describe('GET /api/config/:websiteId — public, no auth required', () => {
     t.mock.method(websiteTrackingConfigRepository, 'findByWebsiteId', async () => makeFakeConfig());
 
     const res = await get(WEBSITE_ID);
-    assert.equal(res.headers.get('cache-control'), 'public, max-age=300');
+    // Asserted against the configured value rather than a hardcoded number,
+    // so tuning TRACKING_CONFIG_CACHE_SECONDS doesn't require editing a
+    // test that is really about "a cache header is set at all".
+    assert.equal(res.headers.get('cache-control'), `public, max-age=${env.trackingConfigCacheSeconds}`);
     assert.ok(res.headers.get('etag'));
+  });
+
+  test('the cache window is short enough that an admin editing config sees it take effect promptly', async () => {
+    // The window an admin waits through after saving before their own
+    // storefront reflects the change. At the original 300s that looked
+    // exactly like the save having silently failed.
+    assert.ok(
+      env.trackingConfigCacheSeconds > 0 && env.trackingConfigCacheSeconds <= 60,
+      `expected a cache window of 1-60s, got ${env.trackingConfigCacheSeconds}`
+    );
   });
 
   test('a well-formed but unknown websiteId returns 404 WEBSITE_NOT_FOUND, not 500', async (t) => {

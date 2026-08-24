@@ -1119,6 +1119,30 @@ function detectProductId($, pathname) {
   return { source: 'url' };
 }
 
+// The add-to-cart control on a LISTING page is a different element from the
+// one on a product page — WooCommerce renders `button[name="add-to-cart"]`
+// on the product page and `a.add_to_cart_button` on the shop grid, and the
+// same split exists on most platforms. Detection only ever sees ONE page,
+// so a selector built from a product page silently ignores every add to
+// cart made straight from the catalogue, which is how most people shop.
+//
+// Keyed by the product-page selector that was detected: when we recognise
+// the platform, we know its catalogue counterpart without having to guess.
+// The SDK resolves the clicked card's own id and price (see
+// extractProductFromCard in selectorTracking.js), so the extra selector is
+// genuinely usable rather than just matching more elements.
+const ARCHIVE_CART_COUNTERPARTS = {
+  'button[name="add-to-cart"]': 'a.add_to_cart_button', // WooCommerce
+  '[name="add-to-cart"]': 'a.add_to_cart_button',
+  '.single_add_to_cart_button': 'a.add_to_cart_button',
+  // buildSelector prefixes the tag when the class alone is not unique, so
+  // both spellings have to be listed.
+  'button.single_add_to_cart_button': 'a.add_to_cart_button',
+  '.product-form__submit': 'button.quick-add__submit', // Shopify
+  'button.product-form__submit': 'button.quick-add__submit',
+  '#product-addtocart-button': 'button.tocart', // Magento
+};
+
 function detectAddToCart($) {
   const found = findAddToCartElement($);
   if (!found) return undefined;
@@ -1129,7 +1153,24 @@ function detectAddToCart($) {
     : found.layer === 'platform'
       ? confidenceForSelector('platform', built.tier)
       : 'low';
-  return { value: built.selector, confidence, source: found.source };
+
+  // Added only when it genuinely widens the match. Asked by comparing the
+  // combined selector's match count against the primary's on this very
+  // page, rather than by assuming: a product page usually also carries a
+  // related-products rail full of catalogue buttons, and those are exactly
+  // the elements the primary selector does NOT match.
+  const counterpart = ARCHIVE_CART_COUNTERPARTS[built.selector];
+  let value = built.selector;
+  if (counterpart) {
+    const combined = `${built.selector}, ${counterpart}`;
+    try {
+      if ($(combined).length > $(built.selector).length) value = combined;
+    } catch {
+      // an unparseable combination — keep the primary selector alone
+    }
+  }
+
+  return { value, confidence, source: found.source };
 }
 
 // =========================================================================
