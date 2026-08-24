@@ -1283,7 +1283,32 @@ describe('fixture: order-received-woocommerce-guest.html — decorated line-item
     assert.deepEqual(names, ['12-piece Tableware Set', 'Ceramic Mug']);
   });
 
-  test('no item id is invented when the rows carry no id attribute', () => {
-    assert.equal(result.orderItemIdSelector, undefined);
+  test('with no id attribute anywhere, the item id comes from the product link', () => {
+    // Not "no id": a per-order synthetic id is what the runtime falls back
+    // to otherwise, and that splits one product into a separate row per
+    // order. The link is stable across orders AND is the same identity a
+    // product-page visit derives from its own URL.
+    const field = result.orderItemIdSelector;
+    assert.ok(field, 'an item id must be derived from the product link');
+    assert.equal(field.source, 'product-link');
+    assert.match(field.value, /::attr\(href\)$/);
+    assert.equal(field.confidence, 'medium', 'a link is weaker than a real id attribute');
+
+    const $ = cheerio.load(HTML);
+    const selector = field.value.replace(/::attr\(href\)$/, '');
+    const hrefs = $(value(result.orderItemContainerSelector))
+      .map((_, row) => $(row).find(selector).first().attr('href'))
+      .get();
+    assert.deepEqual(hrefs, ['/product/12-piece-tableware-set/', '/product/ceramic-mug/']);
+  });
+
+  test('a real id attribute still wins over the product link', () => {
+    const withAttr = HTML.replace(
+      '<tr class="woocommerce-table__line-item order_item">',
+      '<tr class="woocommerce-table__line-item order_item" data-product-id="191">'
+    );
+    const detected = detectOrderConfig(withAttr, URL, 'BDT');
+    assert.equal(value(detected.orderItemIdSelector), '[data-product-id]::attr(data-product-id)');
+    assert.equal(detected.orderItemIdSelector.confidence, 'high');
   });
 });

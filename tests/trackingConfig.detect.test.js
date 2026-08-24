@@ -212,3 +212,129 @@ describe('POST /api/config/:websiteId/detect', () => {
     assert.match(body.data.productError.message, /require login|sign-in page/i);
   });
 });
+
+// A product id only earns its keep if a VIEW and a PURCHASE file under the
+// same value. These cover the one place that can see both pages at once
+// and therefore the only place that can notice them disagreeing.
+describe('POST /api/config/:websiteId/detect — product identity is aligned across the two pages', () => {
+  // WooCommerce shape: the product page exposes an internal numeric id,
+  // while the order page identifies line items only by their product link.
+  const WOO_PRODUCT = `<html><body>
+    <nav>Home | Shop | About | Contact</nav>
+    <h1 class="product_title">12-piece Tableware Set</h1>
+    <p>A complete twelve-piece dinner service in glazed stoneware, dishwasher and microwave safe, suitable for
+    everyday family meals as well as for entertaining guests at home throughout the year.</p>
+    <p class="price"><span class="woocommerce-Price-amount amount">229.99</span></p>
+    <form class="variations_form cart" data-product_id="191">
+      <button type="submit" class="single_add_to_cart_button">Add to cart</button>
+    </form>
+    <footer>&copy; 2026 Academy. All rights reserved.</footer>
+  </body></html>`;
+
+  const WOO_ORDER = `<html><body>
+    <nav>Shopping cart | Checkout | Order complete</nav>
+    <p>Thank you. Your order has been received.</p>
+    <ul class="woocommerce-order-overview">
+      <li class="woocommerce-order-overview__order">Order number: <strong>48586</strong></li>
+      <li class="woocommerce-order-overview__total">Total: <strong>289.99 BDT</strong></li>
+    </ul>
+    <table class="woocommerce-table--order-details">
+      <tbody>
+        <tr class="woocommerce-table__line-item order_item">
+          <td class="product-name"><a href="/product/12-piece-tableware-set/">12-piece Tableware Set</a>
+            <strong class="product-quantity">&times;&nbsp;1</strong></td>
+          <td class="product-total"><span class="woocommerce-Price-amount">229.99</span></td>
+        </tr>
+        <tr class="woocommerce-table__line-item order_item">
+          <td class="product-name"><a href="/product/ceramic-mug/">Ceramic Mug</a>
+            <strong class="product-quantity">&times;&nbsp;3</strong></td>
+          <td class="product-total"><span class="woocommerce-Price-amount">60.00</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <footer>&copy; 2026 Academy. All rights reserved.</footer>
+  </body></html>`;
+
+  function serveBoth(t) {
+    t.mock.method(ssrfSafeFetch, 'fetchHtmlSafely', async (url) => ({
+      html: url.includes('order-received') ? WOO_ORDER : WOO_PRODUCT,
+      finalUrl: url,
+    }));
+  }
+
+  // A distinct owner per test: detectRateLimiter keys on user id and its
+  // counter Map lives for the whole process, so tests sharing one owner
+  // burn a single 10-request budget between them.
+  async function detectBoth(t, ownerId) {
+    const pipeline = setupMockReportingPipeline(t, { currency: 'BDT', ownerId });
+    serveBoth(t);
+    const res = await post(
+      pipeline.websiteId,
+      {
+        productUrl: 'https://academy.example.com/product/12-piece-tableware-set/',
+        orderUrl: 'https://academy.example.com/checkout/order-received/48586/',
+      },
+      pipeline.token
+    );
+    assert.equal(res.status, 200);
+    return (await res.json()).data;
+  }
+
+  test('order line items are identified by their product link when no id attribute exists', async (t) => {
+    const data = await detectBoth(t, 'align-owner-1');
+    assert.equal(data.order.orderItemIdSelector.source, 'product-link');
+    assert.match(data.order.orderItemIdSelector.value, /::attr\(href\)$/);
+  });
+
+  test('the product page is switched to URL ids, because the order page can only produce those', async (t) => {
+    const data = await detectBoth(t, 'align-owner-2');
+    // Left alone, the product page would report data-product_id="191" —
+    // correct in isolation, and unjoinable with "/product/…" purchases.
+    assert.equal(data.product.productIdSource.value, 'url');
+    assert.equal(data.product.productIdSource.source, 'aligned-with-order-items');
+    assert.equal(data.product.productIdSelector, undefined, 'the unused selector must not be saved');
+  });
+
+  test('detecting the product page ALONE keeps its own DOM id — alignment only applies when both pages are known', async (t) => {
+    const pipeline = setupMockReportingPipeline(t, { currency: 'BDT', ownerId: 'align-owner-3' });
+    serveBoth(t);
+    const res = await post(
+      pipeline.websiteId,
+      { productUrl: 'https://academy.example.com/product/12-piece-tableware-set/' },
+      pipeline.token
+    );
+    const { data } = await res.json();
+
+    assert.equal(data.product.productIdSource.value, 'selector');
+    assert.match(data.product.productIdSelector.value, /data-product_id/);
+  });
+
+  test('an order page WITH real id attributes leaves the product page selector alone', async (t) => {
+    const pipeline = setupMockReportingPipeline(t, { currency: 'BDT', ownerId: 'align-owner-4' });
+    const withIds = WOO_ORDER.replaceAll(
+      '<tr class="woocommerce-table__line-item order_item">',
+      '<tr class="woocommerce-table__line-item order_item" data-product-id="191">'
+    );
+    t.mock.method(ssrfSafeFetch, 'fetchHtmlSafely', async (url) => ({
+      html: url.includes('order-received') ? withIds : WOO_PRODUCT,
+      finalUrl: url,
+    }));
+
+    const res = await post(
+      pipeline.websiteId,
+      {
+        productUrl: 'https://academy.example.com/product/12-piece-tableware-set/',
+        orderUrl: 'https://academy.example.com/checkout/order-received/48586/',
+      },
+      pipeline.token
+    );
+    const { data } = await res.json();
+
+    // The real attribute is used, NOT the product link — so there is no
+    // scheme mismatch and the product page keeps its own DOM id.
+    assert.equal(data.order.orderItemIdSelector.value, '[data-product-id]::attr(data-product-id)');
+    assert.notEqual(data.order.orderItemIdSelector.source, 'product-link');
+    assert.equal(data.product.productIdSource.value, 'selector', 'both pages can produce the DOM id — nothing to align');
+    assert.match(data.product.productIdSelector.value, /data-product_id/);
+  });
+});

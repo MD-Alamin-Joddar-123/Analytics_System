@@ -1908,6 +1908,46 @@ function detectOrderItems($) {
     }
   }
 
+  // Last resort: the line item's own link back to the product page.
+  //
+  // WooCommerce, Shopify and most carts render a line item as
+  //   <td class="product-name"><a href="/product/tableware-set/">…</a></td>
+  // with NO id attribute anywhere. Without this, extractOrder falls back to
+  // `synthetic:{orderId}:{index}` — an id that is different in every single
+  // order, so the same product never aggregates: one product bought in
+  // three orders became three separate rows in Product Performance, each
+  // with a fraction of its real revenue.
+  //
+  // The href is stable across orders and is the SAME identity a product
+  // page visit derives from its own URL, so the runtime normalizes both to
+  // the `path:` form (see normalizeProductPath in selectorTracking.js) and
+  // views finally line up with purchases.
+  if (!result.orderItemIdSelector) {
+    const $link = $first
+      .find('a[href]')
+      .filter((_, el) => {
+        const href = $(el).attr('href') || '';
+        // Skip the "remove this item" / quantity controls that sit in the
+        // same cell on cart-style markup; a product link points at a page.
+        if (!href || href.startsWith('#') || /^(?:javascript|mailto|tel):/i.test(href)) return false;
+        return !/remove|delete|undo|cart-item-key/i.test(href + ' ' + ($(el).attr('class') || ''));
+      })
+      .first();
+
+    if ($link.length) {
+      const built = buildFirstMatchSelectorWithin($, $first, $link);
+      if (built) {
+        result.orderItemIdSelector = {
+          value: `${built.selector}::attr(href)`,
+          // A link is a weaker identity than a real id attribute — it moves
+          // if the product is ever re-slugged — so it never claims 'high'.
+          confidence: 'medium',
+          source: 'product-link',
+        };
+      }
+    }
+  }
+
   return result;
 }
 

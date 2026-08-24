@@ -33,6 +33,40 @@ async function detectOneSide(url, run) {
   }
 }
 
+// The only place that sees BOTH pages, and therefore the only place that
+// can notice the two disagreeing about what a product id IS.
+//
+// A product id exists to join a product view to a purchase. When the order
+// page can identify its line items ONLY by their link back to the product
+// page (WooCommerce and most carts render no id attribute at all — see
+// detectionEngine's product-link fallback), the id there is necessarily
+// URL-derived. If the product page meanwhile reports a DOM id — WooCommerce
+// exposes its internal `data-product_id="191"` — then every view is filed
+// under "191" and every purchase under "path:/product/tableware-set", and
+// the two halves of the funnel never meet. Both values are individually
+// correct; the PAIR is unusable.
+//
+// So the product side is aligned to the scheme the order side can actually
+// produce. This is deliberately one-directional: the order page has no way
+// to produce "191", while both pages can always produce a URL path.
+// Flagged with its own source so the dashboard shows WHY the id source
+// says "url" when a perfectly good selector was found.
+function alignProductIdentity({ product, order }) {
+  const itemIdIsLinkDerived = order.orderItemIdSelector?.source === 'product-link';
+  const productUsesSelector = product.productIdSource?.value === 'selector';
+  if (!itemIdIsLinkDerived || !productUsesSelector) return;
+
+  product.productIdSource = {
+    value: 'url',
+    confidence: 'medium',
+    source: 'aligned-with-order-items',
+  };
+  // The selector is dropped rather than left behind: keeping it would save
+  // a field the runtime now ignores, and re-reading this config later would
+  // suggest an id scheme that is not in use.
+  delete product.productIdSelector;
+}
+
 // Detects product and order config independently and in parallel — a
 // failure fetching one URL (blocked, unreachable, timed out) never blocks
 // the other side from still returning whatever it found, per §10's
@@ -44,10 +78,13 @@ async function detectConfig(website, { productUrl, orderUrl }) {
     detectOneSide(orderUrl, (html, finalUrl) => detectOrderConfig(html, finalUrl, website.currency)),
   ]);
 
+  const fields = { product: product.fields ?? {}, order: order.fields ?? {} };
+  alignProductIdentity(fields);
+
   return {
-    product: product.fields ?? {},
+    product: fields.product,
     productError: product.error,
-    order: order.fields ?? {},
+    order: fields.order,
     orderError: order.error,
   };
 }
