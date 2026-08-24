@@ -14,7 +14,6 @@ import { ApiError } from './utils/ApiError.js';
 import routes from './routes/index.js';
 import collectRoutes from './routes/collect.routes.js';
 import trackingConfigPublicRoutes from './routes/trackingConfigPublic.routes.js';
-import { detectionResultRouter } from './routes/detectionSession.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // frontend/sdk's Vite build (see frontend/sdk/vite.config.js) outputs
@@ -151,18 +150,6 @@ export function createApp() {
   // falls through this router untouched and is answered by the restrictive
   // cors(corsOptions) instead.
   app.use('/api/config', trackingConfigPublicRoutes);
-
-  // --- Browser-detection result collector ----------------------------------
-  // POST /api/detection/result — the tracking.js-facing half of the
-  // browser-rendered-DOM Auto Detect flow. The customer site's OWN
-  // tracking.js (opened by the dashboard with
-  // ?analytics_detection_session=<id>) reports what it found in the LIVE
-  // rendered DOM. Exactly like /api/collect: arbitrary customer origins,
-  // zero credentials (the random expiring sessionId in the body is the
-  // entire credential), permissive credential-free CORS scoped inside the
-  // router itself, and mounted BEFORE the app-wide restrictive corsOptions.
-  // See routes/detectionSession.routes.js for the full rationale.
-  app.use('/api/detection', detectionResultRouter);
 
   app.use(helmet());
   app.use(cors(corsOptions));
