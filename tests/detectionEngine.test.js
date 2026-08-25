@@ -1455,3 +1455,84 @@ describe('detectCheckoutConfig — cart/checkout pages', () => {
     assert.doesNotThrow(() => detectCheckoutConfig(HTML, 'https://shop.example.com/cart/'));
   });
 });
+
+// Regression for academy.adspillar.com's /checkout/: a cart belongs to a
+// browser SESSION, so a server fetch (no cookies) is served the storefront's
+// "your cart is empty" page instead — which carries the theme's login form
+// and is short, and so came back as "this page requires login". That sent
+// the reader hunting for an authentication problem that does not exist.
+describe('an empty cart is reported as an empty cart, not as a login wall', () => {
+  const EMPTY_CART = `
+    <html><head><title>Cart | Academy</title></head><body>
+      <nav>Search | Login / Register</nav>
+      <form class="login woocommerce-form woocommerce-form-login">
+        <label>Username or email <input type="text" name="username" /></label>
+        <label>Password <input type="password" name="password" /></label>
+        <button type="submit">Log in</button>
+      </form>
+      <p>Shopping cart &rsaquo; Checkout &rsaquo; Order complete</p>
+      <div class="cart-empty woocommerce-info">Your cart is currently empty.</div>
+      <p class="return-to-shop">Before proceed to checkout you must add some products to your shopping cart.
+      You will find a lot of interesting products on our "Shop" page.</p>
+      <footer>&copy; 2026 Academy. All rights reserved.</footer>
+    </body></html>`;
+
+  function classify(html, url = 'https://academy.example.com/checkout/') {
+    try {
+      return { fields: detectCheckoutConfig(html, url), error: undefined };
+    } catch (error) {
+      return { fields: error.partialFields, error };
+    }
+  }
+
+  test('is rejected as checkout_cart_empty, NOT login_required', () => {
+    const { error } = classify(EMPTY_CART);
+    assert.ok(error instanceof DetectionClassificationError);
+    assert.equal(error.reason, 'checkout_cart_empty');
+  });
+
+  test('the message explains the session limitation and what to do instead', () => {
+    const { error } = classify(EMPTY_CART);
+    assert.match(error.message, /browser session/i);
+    assert.match(error.message, /picker|Test Detection/i);
+  });
+
+  test('the trigger URL pattern survives the rejection — it is still knowable', () => {
+    const { fields } = classify(EMPTY_CART);
+    assert.equal(value(fields.checkoutTriggerUrlPattern), '/checkout');
+  });
+
+  test('the pattern comes from the REQUESTED url, not a redirect target', () => {
+    // An empty checkout bounces to /cart/; a "/cart" trigger would never
+    // fire on the real, populated checkout page.
+    const fields = (() => {
+      try {
+        detectCheckoutConfig(EMPTY_CART, 'https://academy.example.com/cart/', 'https://academy.example.com/checkout/');
+        return null;
+      } catch (error) {
+        return error.partialFields;
+      }
+    })();
+    assert.equal(value(fields.checkoutTriggerUrlPattern), '/checkout');
+  });
+
+  test('a checkout page carrying a login form but a REAL cart is detected normally', () => {
+    const POPULATED = EMPTY_CART.replace(
+      '<div class="cart-empty woocommerce-info">Your cart is currently empty.</div>',
+      `<table class="shop_table">
+         <tbody><tr class="cart-item"><td class="product-name"><a href="/product/led/">LED Lights</a>
+           <strong class="product-quantity">&times;&nbsp;2</strong></td>
+           <td class="product-total"><span class="woocommerce-Price-amount">53.98</span></td></tr>
+         <tr class="cart-item"><td class="product-name"><a href="/product/mug/">Mug</a>
+           <strong class="product-quantity">&times;&nbsp;1</strong></td>
+           <td class="product-total"><span class="woocommerce-Price-amount">60.00</span></td></tr></tbody>
+         <tfoot><tr class="order-total"><th>Total:</th>
+           <td><span class="woocommerce-Price-amount">113.98</span></td></tr></tfoot>
+       </table>`
+    );
+    const { fields, error } = classify(POPULATED);
+    assert.equal(error, undefined, 'a populated cart must not be rejected');
+    assert.ok(value(fields.checkoutTotalSelector), 'the cart total must be detected');
+    assert.ok(value(fields.checkoutItemContainerSelector), 'the line items must be detected');
+  });
+});

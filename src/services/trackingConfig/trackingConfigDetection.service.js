@@ -28,10 +28,21 @@ async function detectOneSide(url, run) {
   if (!url) return { fields: undefined, error: undefined };
   try {
     const { html, finalUrl } = await ssrfSafeFetch.fetchHtmlSafely(url);
-    return { fields: run(html, finalUrl), error: undefined };
+    // Both URLs are handed on: finalUrl is what was actually parsed, but a
+    // redirect means the REQUESTED url is the one the shopper's browser
+    // will be on (an empty cart bounces /checkout/ to /cart/, and a trigger
+    // pattern of "/cart" would then never fire on the real checkout).
+    return { fields: run(html, finalUrl, url), error: undefined };
   } catch (error) {
     if (error instanceof DetectionClassificationError) {
-      return { fields: undefined, error: { reason: error.reason, message: error.message } };
+      // Some classifications still know something worth keeping. An empty
+      // cart hides the line items and the total, but NOT the page's own URL
+      // shape — handing that back means the admin only has to fill the
+      // selectors, instead of retyping a pattern the server just worked out.
+      return {
+        fields: error.partialFields,
+        error: { reason: error.reason, message: error.message },
+      };
     }
     const reason = error instanceof DetectFetchError ? error.reason : 'unreachable';
     return { fields: undefined, error: { reason, message: FETCH_ERROR_MESSAGES[reason] ?? FETCH_ERROR_MESSAGES.unreachable } };
@@ -81,7 +92,7 @@ async function detectConfig(website, { productUrl, orderUrl, checkoutUrl }) {
   const [product, order, checkout] = await Promise.all([
     detectOneSide(productUrl, (html, finalUrl) => detectProductConfig(html, finalUrl)),
     detectOneSide(orderUrl, (html, finalUrl) => detectOrderConfig(html, finalUrl, website.currency)),
-    detectOneSide(checkoutUrl, (html, finalUrl) => detectCheckoutConfig(html, finalUrl)),
+    detectOneSide(checkoutUrl, (html, finalUrl, requestedUrl) => detectCheckoutConfig(html, finalUrl, requestedUrl)),
   ]);
 
   const fields = { product: product.fields ?? {}, order: order.fields ?? {} };

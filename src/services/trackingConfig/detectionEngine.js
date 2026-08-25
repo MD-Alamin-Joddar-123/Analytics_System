@@ -44,10 +44,13 @@ const MAX_STRUCTURAL_DEPTH = 4;
 // way `DetectFetchError` already is — a `{ reason, message }` shape the
 // service layer surfaces verbatim to the dashboard.
 class DetectionClassificationError extends Error {
-  constructor(reason, message) {
+  constructor(reason, message, partialFields) {
     super(message);
     this.name = 'DetectionClassificationError';
-    this.reason = reason; // 'listing_page' | 'login_required' | 'js_rendered_empty' | 'order_signals_missing'
+    this.reason = reason; // 'listing_page' | 'login_required' | 'js_rendered_empty' | 'order_signals_missing' | 'checkout_signals_missing' | 'checkout_cart_empty'
+    // Anything that IS still knowable despite the rejection. Optional —
+    // most classifications genuinely have nothing to hand back.
+    this.partialFields = partialFields;
   }
 }
 
@@ -1240,6 +1243,15 @@ function looksLikeLoginPage($) {
   const h1 = $('h1').first().text();
   if (LOGIN_TEXT.test(title) || LOGIN_TEXT.test(h1)) return true;
 
+  // A page that is plainly ABOUT a cart, checkout or order is not a login
+  // page, however prominent the login form on it. Storefront themes put a
+  // "returning customer? log in" form directly on the checkout, and an
+  // empty cart page is short enough to fall under the length test below —
+  // which is exactly how a perfectly readable cart page came back as
+  // "requires login". A genuine login WALL is still caught, by the sentence
+  // test above, which runs before this and outranks it.
+  if (hasCheckoutSignals($) || hasOrderSignals($)) return false;
+
   const visiblePasswordFields = $('form input[type="password"]').filter(
     (_, el) => !isHiddenElement($(el)) && !isHiddenElement($(el).closest('form'))
   );
@@ -2095,14 +2107,53 @@ function detectCheckoutTotal($) {
   return detectOrderTotal($);
 }
 
-export function detectCheckoutConfig(html, pageUrl) {
+// A cart belongs to a browser session, so a server fetch — which carries
+// no cookies — sees it EMPTY, and the storefront serves its "your cart is
+// currently empty" page instead of the real checkout. That page has no
+// line items and no total to detect, and (because themes put a login form
+// in its header, and it is short) it used to be reported as "requires
+// login", which sent people looking for an authentication problem that
+// does not exist.
+const EMPTY_CART_TEXT =
+  /\b(?:your\s+)?(?:shopping\s+)?(?:cart|basket|bag)\s+is\s+(?:currently\s+)?empty|no\s+items?\s+in\s+your\s+(?:cart|basket|bag)|cart\s+is\s+empty/i;
+const EMPTY_CART_SELECTORS = '.cart-empty, .wc-empty-cart-message, .is-empty, [class*="empty-cart" i], [class*="cart-empty" i]';
+
+function looksLikeEmptyCart($) {
+  try {
+    if ($(EMPTY_CART_SELECTORS).length > 0) return true;
+  } catch {
+    // an unparseable selector in this build — fall through to the text test
+  }
+  return EMPTY_CART_TEXT.test(visibleText($));
+}
+
+export function detectCheckoutConfig(html, pageUrl, requestedUrl) {
   const $ = cheerio.load(html);
   const pathname = new URL(pageUrl).pathname;
+  // What the shopper types/clicks, before any redirect — see the service.
+  const triggerPathname = new URL(requestedUrl ?? pageUrl).pathname;
+
+  // Checked BEFORE the shared page-shape classification: the empty-cart
+  // page carries the theme's login widget, and letting the generic login
+  // check see it first produced a misleading, unactionable message.
+  if (looksLikeEmptyCart($)) {
+    throw new DetectionClassificationError(
+      'checkout_cart_empty',
+      'This cart/checkout page is empty when the server fetches it — a cart belongs to a browser session, and the server has none, so there are no line items or total to read. The trigger URL pattern below WAS detected; fill the total and item selectors with the 🎯 picker (open your own cart with items in it), or paste that page\'s rendered HTML into "Test Detection".',
+      {
+        checkoutTriggerUrlPattern: {
+          value: urlPatternFromPath(triggerPathname),
+          confidence: 'medium',
+          source: 'url-structure',
+        },
+      }
+    );
+  }
 
   classifyPageOrThrow($, 'checkout data');
 
   const result = {};
-  result.checkoutTriggerUrlPattern = { value: urlPatternFromPath(pathname), confidence: 'medium', source: 'url-structure' };
+  result.checkoutTriggerUrlPattern = { value: urlPatternFromPath(triggerPathname), confidence: 'medium', source: 'url-structure' };
 
   const total = detectCheckoutTotal($);
   if (total) {
