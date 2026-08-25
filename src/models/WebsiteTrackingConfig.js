@@ -93,6 +93,26 @@ const websiteTrackingConfigSchema = new mongoose.Schema(
     orderItemPriceSelector: { type: String, trim: true, maxlength: 500 },
     orderItemQtySelector: { type: String, trim: true, maxlength: 500 },
 
+    // --- Checkout detection ------------------------------------------------
+    //
+    // Deliberately mirrors the order block above field-for-field, minus an
+    // id: a checkout has no customer-visible number the way an order does,
+    // so the SDK mints its own checkoutId and carries it through to the
+    // purchase — that link is what turns "Checkout Started" into "Checkout
+    // Completed" (see mapEventToBucketIncrements' checkoutJustCompleted).
+    //
+    // Currency is NOT repeated here; orderCurrency already states what this
+    // website sells in, and a checkout in a different currency from its own
+    // order page would be a bug, not a configuration.
+    checkoutTriggerUrlPattern: { type: String, trim: true, maxlength: 500 },
+    checkoutTotalSelector: { type: String, trim: true, maxlength: 500 },
+    checkoutTotalRegex: { type: String, trim: true, maxlength: 300 },
+    checkoutItemContainerSelector: { type: String, trim: true, maxlength: 500 },
+    checkoutItemIdSelector: { type: String, trim: true, maxlength: 500 },
+    checkoutItemNameSelector: { type: String, trim: true, maxlength: 500 },
+    checkoutItemPriceSelector: { type: String, trim: true, maxlength: 500 },
+    checkoutItemQtySelector: { type: String, trim: true, maxlength: 500 },
+
     // --- Add-to-cart (optional, click-based) --------------------------------
     // Unlike product_view/purchase (page-state, detected on load —
     // see docs/SDK_ARCHITECTURE.md's auto-fire section), add-to-cart is a

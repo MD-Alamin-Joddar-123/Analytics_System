@@ -1,5 +1,10 @@
 import { ssrfSafeFetch, DetectFetchError } from '../../utils/ssrfSafeFetch.js';
-import { detectProductConfig, detectOrderConfig, DetectionClassificationError } from './detectionEngine.js';
+import {
+  detectProductConfig,
+  detectOrderConfig,
+  detectCheckoutConfig,
+  DetectionClassificationError,
+} from './detectionEngine.js';
 
 // DetectFetchError's messages are re-mapped through this table rather than
 // shown as-is — they can carry incidental network/URL detail not worth
@@ -72,10 +77,11 @@ function alignProductIdentity({ product, order }) {
 // the other side from still returning whatever it found, per §10's
 // "partial results are still useful" requirement. Only throws when there
 // is nothing at all to attempt or report back.
-async function detectConfig(website, { productUrl, orderUrl }) {
-  const [product, order] = await Promise.all([
+async function detectConfig(website, { productUrl, orderUrl, checkoutUrl }) {
+  const [product, order, checkout] = await Promise.all([
     detectOneSide(productUrl, (html, finalUrl) => detectProductConfig(html, finalUrl)),
     detectOneSide(orderUrl, (html, finalUrl) => detectOrderConfig(html, finalUrl, website.currency)),
+    detectOneSide(checkoutUrl, (html, finalUrl) => detectCheckoutConfig(html, finalUrl)),
   ]);
 
   const fields = { product: product.fields ?? {}, order: order.fields ?? {} };
@@ -86,6 +92,8 @@ async function detectConfig(website, { productUrl, orderUrl }) {
     productError: product.error,
     order: fields.order,
     orderError: order.error,
+    checkout: checkout.fields ?? {},
+    checkoutError: checkout.error,
   };
 }
 

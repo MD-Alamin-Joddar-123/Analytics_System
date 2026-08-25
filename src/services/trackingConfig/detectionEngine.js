@@ -2043,3 +2043,91 @@ export function detectOrderConfig(html, pageUrl, websiteCurrency) {
 }
 
 export { DetectionClassificationError };
+
+// =========================================================================
+// Checkout detection
+// =========================================================================
+//
+// A checkout/cart page is structurally an order confirmation page that has
+// not happened yet: the same repeating line items, the same order-total
+// line, but no order number (there is no order until payment succeeds).
+// So this reuses detectOrderItems and detectOrderTotal wholesale rather
+// than re-deriving them, and only the field NAMES differ.
+//
+// Why it exists at all: the config schema had no checkout fields, so the
+// Conversion Funnel's "Checkout Started" and "Checkout Completed" steps
+// could never be populated from the dashboard — they were reachable only
+// by hand-writing Analytics.checkout(...) into the site.
+
+const CHECKOUT_SIGNAL_TEXT =
+  /\b(check\s?out|shopping\s*cart|your\s*cart|cart\s*summary|order\s*summary|place\s*(your\s*)?order|proceed\s*to\s*(payment|checkout)|billing\s*details|shipping\s*(address|details)|payment\s*method)\b/i;
+
+function hasCheckoutSignals($) {
+  return CHECKOUT_SIGNAL_TEXT.test($('body').text());
+}
+
+// The order-total label patterns already cover a checkout ("Total",
+// "Order Total", "Grand Total"), and a checkout page adds one of its own.
+const CHECKOUT_TOTAL_PATTERNS = [
+  '.order-total .woocommerce-Price-amount', 'tr.order-total td', '.cart-subtotal td',
+  '[data-checkout-total]', '[data-testid*="checkout-total" i]', '[data-testid*="cart-total" i]',
+  '[class*="checkout-total" i]', '[class*="cart-total" i]', '[class*="grand-total" i]',
+  '[class*="order-total" i]', '[id*="checkout-total" i]', '[id*="cart-total" i]',
+];
+
+function detectCheckoutTotal($) {
+  const platform = firstMatchingPattern($, CHECKOUT_TOTAL_PATTERNS, ($el) => {
+    const text = $el.text().trim();
+    return text.length <= 200 && PRICE_PATTERN.test(text);
+  });
+  if (platform) {
+    const built = buildFirstMatchSelector($, platform.$el);
+    if (built) {
+      const base = confidenceForSelector('platform', built.tier);
+      return {
+        selector: { value: built.selector, confidence: built.unique ? base : lowerOf(base, 'medium'), source: 'platform-pattern' },
+        regex: { value: PRICE_REGEX_VALUE, confidence: 'medium', source: 'platform-pattern' },
+      };
+    }
+  }
+  // Falls back to exactly the same label-proximity reading an order page
+  // uses — "Total: 289.99" means the same thing on either page.
+  return detectOrderTotal($);
+}
+
+export function detectCheckoutConfig(html, pageUrl) {
+  const $ = cheerio.load(html);
+  const pathname = new URL(pageUrl).pathname;
+
+  classifyPageOrThrow($, 'checkout data');
+
+  const result = {};
+  result.checkoutTriggerUrlPattern = { value: urlPatternFromPath(pathname), confidence: 'medium', source: 'url-structure' };
+
+  const total = detectCheckoutTotal($);
+  if (total) {
+    result.checkoutTotalSelector = total.selector;
+    result.checkoutTotalRegex = total.regex;
+  }
+
+  // Same "is this even the right kind of page" guard the order side has,
+  // for the same reason: a silent empty result is indistinguishable from
+  // "this really is a checkout with unusual markup".
+  if (!total && !hasCheckoutSignals($)) {
+    throw new DetectionClassificationError(
+      'checkout_signals_missing',
+      "This page doesn't look like a cart or checkout page (no cart total, line items, or checkout wording found). Please paste the URL of your cart or checkout page."
+    );
+  }
+
+  // detectOrderItems returns orderItem* keys; renamed rather than
+  // duplicated, because the line-item markup being detected is identical.
+  const items = detectOrderItems($);
+  if (items) {
+    for (const [key, field] of Object.entries(items)) {
+      result[key.replace(/^orderItem/, 'checkoutItem')] = field;
+    }
+  }
+
+  return result;
+}

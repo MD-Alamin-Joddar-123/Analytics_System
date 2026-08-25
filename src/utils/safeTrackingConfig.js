@@ -29,6 +29,14 @@ const PUBLIC_FIELDS = [
   'orderItemPriceSelector',
   'orderItemQtySelector',
   'addToCartSelector',
+  'checkoutTriggerUrlPattern',
+  'checkoutTotalSelector',
+  'checkoutTotalRegex',
+  'checkoutItemContainerSelector',
+  'checkoutItemIdSelector',
+  'checkoutItemNameSelector',
+  'checkoutItemPriceSelector',
+  'checkoutItemQtySelector',
   'updatedAt',
 ];
 

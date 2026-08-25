@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { detectProductConfig, detectOrderConfig, DetectionClassificationError } from '../src/services/trackingConfig/detectionEngine.js';
+import { detectProductConfig, detectOrderConfig, detectCheckoutConfig, DetectionClassificationError } from '../src/services/trackingConfig/detectionEngine.js';
 import * as cheerio from 'cheerio';
 
 function value(field) {
@@ -1364,5 +1364,94 @@ describe('add-to-cart detection covers the catalogue button too', () => {
     const PLAIN = PRODUCT_PAGE.replace(/<section class="related">[\s\S]*<\/section>/, '');
     const result = detectProductConfig(PLAIN, URL);
     assert.doesNotMatch(value(result.addToCartSelector), /,/, 'nothing to widen — no second clause should appear');
+  });
+});
+
+// A checkout page is an order confirmation page that has not happened yet:
+// the same repeating line items and total line, but no order number. Its
+// detection therefore reuses the order machinery — these pin that the
+// REUSE is correct and that the fields come back under checkout* names.
+describe('detectCheckoutConfig — cart/checkout pages', () => {
+  const CHECKOUT = `
+    <html><body>
+      <nav>Home | Shop | Cart | Checkout</nav>
+      <h1>Checkout</h1>
+      <p>Review your order below and choose a payment method to complete your purchase. Shipping is calculated
+      at the next step and all prices include applicable taxes.</p>
+      <table class="shop_table">
+        <tbody>
+          <tr class="cart-item"><td class="product-name"><a href="/product/led/">LED Lights</a>
+            <strong class="product-quantity">&times;&nbsp;2</strong></td>
+            <td class="product-total"><span class="woocommerce-Price-amount">53.98&#2547;</span></td></tr>
+          <tr class="cart-item"><td class="product-name"><a href="/product/mug/">Ceramic Mug</a>
+            <strong class="product-quantity">&times;&nbsp;1</strong></td>
+            <td class="product-total"><span class="woocommerce-Price-amount">60.00&#2547;</span></td></tr>
+        </tbody>
+        <tfoot>
+          <tr class="order-total"><th>Total:</th>
+            <td><span class="woocommerce-Price-amount">113.98&#2547;</span></td></tr>
+        </tfoot>
+      </table>
+      <footer>&copy; 2026 Academy. All rights reserved.</footer>
+    </body></html>`;
+
+  const URL = 'https://academy.example.com/checkout/';
+  const result = detectCheckoutConfig(CHECKOUT, URL);
+
+  test('detects the checkout trigger URL pattern', () => {
+    assert.equal(value(result.checkoutTriggerUrlPattern), '/checkout');
+  });
+
+  test('detects a cart total whose regex actually extracts the number', () => {
+    assert.ok(value(result.checkoutTotalSelector));
+    const $ = cheerio.load(CHECKOUT);
+    const text = $(value(result.checkoutTotalSelector)).first().text();
+    assert.equal(new RegExp(value(result.checkoutTotalRegex)).exec(text)[1], '113.98');
+  });
+
+  test('line items come back under checkout* names, never order* ones', () => {
+    assert.ok(value(result.checkoutItemContainerSelector));
+    assert.equal(result.orderItemContainerSelector, undefined, 'order fields must not leak into a checkout config');
+    assert.equal(result.orderTotalSelector, undefined);
+  });
+
+  test('the item selectors resolve per row, exactly like the order side', () => {
+    const $ = cheerio.load(CHECKOUT);
+    const rows = $(value(result.checkoutItemContainerSelector));
+    assert.equal(rows.length, 2);
+    const names = rows.map((_, r) => $(r).find(value(result.checkoutItemNameSelector)).first().text().trim()).get();
+    assert.deepEqual(names, ['LED Lights', 'Ceramic Mug']);
+  });
+
+  test('no order id is produced — a checkout has no order number yet', () => {
+    assert.equal(result.orderIdSelector, undefined);
+    assert.equal(result.checkoutIdSelector, undefined);
+  });
+
+  test('a page with no cart total and no checkout wording is rejected with a clear reason', () => {
+    const HTML = `
+      <html><body>
+        <nav>Home | Shop | About | Contact</nav>
+        <h1>About Us</h1>
+        <p>We are a small local business founded in 2020, dedicated to quality and customer service. Reach out
+        with any questions about our products or services at any time during business hours.</p>
+        <footer>&copy; 2026 Example Shop. All rights reserved.</footer>
+      </body></html>`;
+    assert.throws(
+      () => detectCheckoutConfig(HTML, 'https://shop.example.com/checkout/'),
+      (error) => error instanceof DetectionClassificationError && error.reason === 'checkout_signals_missing'
+    );
+  });
+
+  test('a cart page with checkout wording but no readable total is NOT rejected', () => {
+    const HTML = `
+      <html><body>
+        <nav>Home | Shop | Cart</nav>
+        <h1>Shopping cart</h1>
+        <p>Your cart is being updated. Proceed to checkout when you are ready to complete your order, and we
+        will calculate shipping and taxes on the following page.</p>
+        <footer>&copy; 2026 Example Shop. All rights reserved.</footer>
+      </body></html>`;
+    assert.doesNotThrow(() => detectCheckoutConfig(HTML, 'https://shop.example.com/cart/'));
   });
 });

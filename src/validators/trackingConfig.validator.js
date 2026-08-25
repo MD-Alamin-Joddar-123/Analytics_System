@@ -167,6 +167,33 @@ export function validateTrackingConfigBody(req, res, next) {
     const addToCartSelector = readOptionalSelector(body, 'addToCartSelector');
     if (addToCartSelector !== undefined) validated.addToCartSelector = addToCartSelector;
 
+    // --- checkout (optional) ------------------------------------------------
+    // Same shape as the order block, and validated by the same readers — a
+    // checkout page is structurally an order page without an order number.
+    const checkoutTriggerUrlPattern = readOptionalSelector(body, 'checkoutTriggerUrlPattern');
+    if (checkoutTriggerUrlPattern !== undefined) validated.checkoutTriggerUrlPattern = checkoutTriggerUrlPattern;
+
+    const checkoutTotalSelector = readOptionalSelector(body, 'checkoutTotalSelector');
+    if (checkoutTotalSelector !== undefined) validated.checkoutTotalSelector = checkoutTotalSelector;
+
+    const checkoutTotalRegex = readOptionalRegex(body, 'checkoutTotalRegex');
+    if (checkoutTotalRegex !== undefined) validated.checkoutTotalRegex = checkoutTotalRegex;
+
+    const checkoutItemContainerSelector = readOptionalSelector(body, 'checkoutItemContainerSelector');
+    if (checkoutItemContainerSelector !== undefined) validated.checkoutItemContainerSelector = checkoutItemContainerSelector;
+
+    const checkoutItemIdSelector = readOptionalSelector(body, 'checkoutItemIdSelector');
+    if (checkoutItemIdSelector !== undefined) validated.checkoutItemIdSelector = checkoutItemIdSelector;
+
+    const checkoutItemNameSelector = readOptionalSelector(body, 'checkoutItemNameSelector');
+    if (checkoutItemNameSelector !== undefined) validated.checkoutItemNameSelector = checkoutItemNameSelector;
+
+    const checkoutItemPriceSelector = readOptionalSelector(body, 'checkoutItemPriceSelector');
+    if (checkoutItemPriceSelector !== undefined) validated.checkoutItemPriceSelector = checkoutItemPriceSelector;
+
+    const checkoutItemQtySelector = readOptionalSelector(body, 'checkoutItemQtySelector');
+    if (checkoutItemQtySelector !== undefined) validated.checkoutItemQtySelector = checkoutItemQtySelector;
+
     req.validated = validated;
     next();
   } catch (error) {

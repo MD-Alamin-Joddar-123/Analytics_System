@@ -67,12 +67,16 @@ export function validateDetectBody(req, res, next) {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const productUrl = readOptionalUrl(body, 'productUrl', { rejectListingShape: true });
     const orderUrl = readOptionalUrl(body, 'orderUrl');
+    const checkoutUrl = readOptionalUrl(body, 'checkoutUrl');
 
-    if (!productUrl && !orderUrl) {
-      throw ApiError.badRequest('At least one of productUrl or orderUrl is required.', ErrorCodes.DETECT_NO_URL_PROVIDED);
+    if (!productUrl && !orderUrl && !checkoutUrl) {
+      throw ApiError.badRequest(
+        'At least one of productUrl, orderUrl or checkoutUrl is required.',
+        ErrorCodes.DETECT_NO_URL_PROVIDED
+      );
     }
 
-    req.validated = { productUrl, orderUrl };
+    req.validated = { productUrl, orderUrl, checkoutUrl };
     next();
   } catch (error) {
     next(error);
