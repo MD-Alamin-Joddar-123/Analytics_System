@@ -1,6 +1,11 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyReferrer, summarizeTrafficSources, TRAFFIC_CHANNELS } from '../src/utils/trafficSource.js';
+import {
+  classifyReferrer,
+  summarizeTrafficSources,
+  buildTrafficSourceSeries,
+  TRAFFIC_CHANNELS,
+} from '../src/utils/trafficSource.js';
 
 const SITE = 'academy.adspillar.com';
 
@@ -124,5 +129,72 @@ describe('summarizeTrafficSources', () => {
   test('groups with no sessions are ignored rather than creating 0-count rows', () => {
     const withZero = summarizeTrafficSources([{ referrer: 'https://x.example/', sessions: 0 }], SITE);
     assert.deepEqual(withZero, []);
+  });
+});
+
+describe('buildTrafficSourceSeries', () => {
+  const BUCKETS = [
+    { bucket: new Date('2026-08-24T00:00:00Z'), referrer: null, sessions: 19 },
+    { bucket: new Date('2026-08-24T00:00:00Z'), referrer: 'https://academy.adspillar.com/shop/', sessions: 15 },
+    { bucket: new Date('2026-08-24T00:00:00Z'), referrer: 'https://www.google.com/', sessions: 5 },
+    { bucket: new Date('2026-08-25T00:00:00Z'), referrer: null, sessions: 12 },
+    { bucket: new Date('2026-08-25T00:00:00Z'), referrer: 'https://tiny.example/', sessions: 2 },
+  ];
+
+  test('produces one point per bucket, in chronological order', () => {
+    const { points } = buildTrafficSourceSeries(BUCKETS, SITE, ['Direct', 'Internal', 'google.com']);
+    assert.equal(points.length, 2);
+    assert.ok(points[0].date < points[1].date);
+  });
+
+  test('each point carries a numeric key per source', () => {
+    const { points } = buildTrafficSourceSeries(BUCKETS, SITE, ['Direct', 'Internal', 'google.com']);
+    assert.equal(points[0].Direct, 19);
+    assert.equal(points[0].Internal, 15);
+    assert.equal(points[0]['google.com'], 5);
+  });
+
+  test('sources outside the keep-list are summed into "Other", never dropped', () => {
+    const keep = ['Direct', 'Internal'];
+    const { points, keys } = buildTrafficSourceSeries(BUCKETS, SITE, keep);
+    assert.ok(keys.includes('Other'), 'an Other series must exist');
+    // Bucket 1: google (5) -> Other. Bucket 2: tiny.example (2) -> Other.
+    assert.equal(points[0].Other, 5);
+    assert.equal(points[1].Other, 2);
+
+    // Nothing may go missing: the lines still add up to every session.
+    const plotted = points.reduce(
+      (sum, point) => sum + keys.reduce((inner, key) => inner + point[key], 0),
+      0
+    );
+    assert.equal(plotted, BUCKETS.reduce((sum, b) => sum + b.sessions, 0));
+  });
+
+  test('a series missing from a bucket is filled with 0, not left undefined', () => {
+    // Recharts draws a GAP for a missing key, which reads as "no data"
+    // rather than the truth, which is "nobody arrived from there".
+    const { points, keys } = buildTrafficSourceSeries(BUCKETS, SITE, ['Direct', 'Internal', 'google.com']);
+    for (const point of points) {
+      for (const key of keys) {
+        assert.equal(typeof point[key], 'number', `${key} must be numeric in every point`);
+      }
+    }
+    assert.equal(points[1]['google.com'], 0);
+    assert.equal(points[1].Internal, 0);
+  });
+
+  test('an empty range yields no points and no series', () => {
+    const { points, keys } = buildTrafficSourceSeries([], SITE, ['Direct']);
+    assert.deepEqual(points, []);
+    assert.deepEqual(keys, []);
+  });
+
+  test('zero-session buckets never create a point', () => {
+    const { points } = buildTrafficSourceSeries(
+      [{ bucket: new Date('2026-08-24T00:00:00Z'), referrer: null, sessions: 0 }],
+      SITE,
+      ['Direct']
+    );
+    assert.deepEqual(points, []);
   });
 });

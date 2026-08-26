@@ -115,3 +115,41 @@ export function summarizeTrafficSources(groups, siteDomain) {
       share: total > 0 ? Math.round((row.sessions / total) * 1000) / 10 : 0,
     }));
 }
+
+// Turns bucketed groups into the shape a multi-line chart wants: one point
+// per time bucket, with one numeric key per source.
+//
+// Only the sources that appear in `keepSources` become keys — the caller
+// passes the top few from the totals, because a line per referrer would be
+// unreadable the moment a site has more than a handful. Everything else is
+// summed into "Other" so the lines still add up to the real session count
+// rather than quietly under-reporting.
+export function buildTrafficSourceSeries(bucketGroups, siteDomain, keepSources) {
+  const keep = new Set(keepSources);
+  const byBucket = new Map();
+
+  for (const group of bucketGroups) {
+    const count = Number(group?.sessions) || 0;
+    if (count <= 0) continue;
+
+    const iso = group.bucket instanceof Date ? group.bucket.toISOString() : String(group.bucket);
+    const { source } = classifyReferrer(group.referrer, siteDomain);
+    const key = keep.has(source) ? source : 'Other';
+
+    if (!byBucket.has(iso)) byBucket.set(iso, { date: iso });
+    const point = byBucket.get(iso);
+    point[key] = (point[key] ?? 0) + count;
+  }
+
+  const points = [...byBucket.values()].sort((a, b) => a.date.localeCompare(b.date));
+
+  // Recharts draws a gap where a key is missing, which would read as "no
+  // data" rather than "nobody arrived from there in this hour". Zero is
+  // the truthful value, so every point carries every key.
+  const keys = [...new Set(points.flatMap((point) => Object.keys(point).filter((k) => k !== 'date')))];
+  for (const point of points) {
+    for (const key of keys) if (point[key] === undefined) point[key] = 0;
+  }
+
+  return { points, keys };
+}

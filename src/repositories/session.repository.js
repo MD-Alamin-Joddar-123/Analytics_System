@@ -44,6 +44,28 @@ export const sessionRepository = {
   //
   // Grouped in Mongo rather than in JavaScript so the response size is
   // bounded by the number of DISTINCT referrers, not by session count.
+  // The same grouping, split by time bucket, for the traffic-source chart.
+  //
+  // $dateTrunc does the bucketing in Mongo so the result is bounded by
+  // (buckets x distinct referrers) rather than by session count, and so the
+  // boundaries agree with the analytics buckets the other charts plot
+  // (both are UTC-truncated by the same unit).
+  async aggregateEntryReferrersByBucket(websiteId, from, to, granularity) {
+    return Session.aggregate([
+      { $match: { websiteId, startedAt: { $gte: from, $lt: to } } },
+      {
+        $group: {
+          _id: {
+            bucket: { $dateTrunc: { date: '$startedAt', unit: granularity } },
+            referrer: '$entryReferrer',
+          },
+          sessions: { $sum: 1 },
+        },
+      },
+      { $sort: { '_id.bucket': 1 } },
+    ]);
+  },
+
   async aggregateEntryReferrers(websiteId, from, to) {
     return Session.aggregate([
       { $match: { websiteId, startedAt: { $gte: from, $lt: to } } },

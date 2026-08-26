@@ -8,7 +8,7 @@ import { calculateRate, calculateAverage, calculateConversionRates } from '../..
 import { ApiError } from '../../utils/ApiError.js';
 import { ErrorCodes } from '../../constants/errorCodes.js';
 import { sessionRepository } from '../../repositories/session.repository.js';
-import { summarizeTrafficSources } from '../../utils/trafficSource.js';
+import { summarizeTrafficSources, buildTrafficSourceSeries } from '../../utils/trafficSource.js';
 
 // Phase 9 — the reporting layer. Every function here READS the Phase 8
 // aggregation collections (AnalyticsBucket/ProductAnalyticsBucket/
@@ -258,19 +258,40 @@ async function getConversionReport(website, query) {
 // unbounded free text, so there is no fixed set of counters it could ever
 // have been pre-aggregated into, and the same reason observability's
 // visitor/session reports query their collections directly.
+// How many distinct sources get their own line. Beyond a handful the
+// chart stops being readable and every extra line is a source with one or
+// two sessions; the rest are summed into "Other" so nothing is lost.
+const MAX_TRAFFIC_SOURCE_SERIES = 5;
+
 async function getTrafficSourcesReport(website, query) {
-  const { from, to } = query;
-  const groups = await sessionRepository.aggregateEntryReferrers(website.websiteId, from, to);
+  const { from, to, granularity } = query;
+  const [groups, bucketGroups] = await Promise.all([
+    sessionRepository.aggregateEntryReferrers(website.websiteId, from, to),
+    sessionRepository.aggregateEntryReferrersByBucket(website.websiteId, from, to, granularity),
+  ]);
 
   const sources = summarizeTrafficSources(
     groups.map((row) => ({ referrer: row._id, sessions: row.sessions })),
     website.domain
   );
 
+  // The chart plots the same sources the list ranks, so the two always
+  // agree about what the biggest source is.
+  const topSources = sources.slice(0, MAX_TRAFFIC_SOURCE_SERIES).map((row) => row.source);
+  const { points, keys } = buildTrafficSourceSeries(
+    bucketGroups.map((row) => ({ bucket: row._id.bucket, referrer: row._id.referrer, sessions: row.sessions })),
+    website.domain,
+    topSources
+  );
+
   return {
     range: serializeRange(query),
+    granularity,
     totalSessions: sources.reduce((sum, row) => sum + row.sessions, 0),
     sources,
+    points,
+    // Ordered by overall size, so the legend and the list read the same way.
+    series: keys.sort((a, b) => topSources.indexOf(a) - topSources.indexOf(b)),
   };
 }
 
