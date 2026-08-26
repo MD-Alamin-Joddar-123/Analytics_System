@@ -7,6 +7,8 @@ import { fromMinorUnits } from '../../utils/money.js';
 import { calculateRate, calculateAverage, calculateConversionRates } from '../../utils/analyticsFormulas.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { ErrorCodes } from '../../constants/errorCodes.js';
+import { sessionRepository } from '../../repositories/session.repository.js';
+import { summarizeTrafficSources } from '../../utils/trafficSource.js';
 
 // Phase 9 — the reporting layer. Every function here READS the Phase 8
 // aggregation collections (AnalyticsBucket/ProductAnalyticsBucket/
@@ -251,6 +253,27 @@ async function getConversionReport(website, query) {
 
 // --- 6. Cart / checkout report ---------------------------------------------
 
+// Where the sessions in this range CAME FROM. Reads the Session
+// collection directly rather than an analytics bucket: referrer is
+// unbounded free text, so there is no fixed set of counters it could ever
+// have been pre-aggregated into, and the same reason observability's
+// visitor/session reports query their collections directly.
+async function getTrafficSourcesReport(website, query) {
+  const { from, to } = query;
+  const groups = await sessionRepository.aggregateEntryReferrers(website.websiteId, from, to);
+
+  const sources = summarizeTrafficSources(
+    groups.map((row) => ({ referrer: row._id, sessions: row.sessions })),
+    website.domain
+  );
+
+  return {
+    range: serializeRange(query),
+    totalSessions: sources.reduce((sum, row) => sum + row.sessions, 0),
+    sources,
+  };
+}
+
 async function getCartCheckoutReport(website, query) {
   const { from, to, granularity } = query;
   const totals = await analyticsRepository.sumBucketsInRange(website.websiteId, granularity, from, to);
@@ -309,5 +332,6 @@ export const reportingService = {
   getProductDetail,
   getConversionReport,
   getCartCheckoutReport,
+  getTrafficSourcesReport,
   getRevenueReport,
 };

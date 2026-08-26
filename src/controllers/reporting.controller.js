@@ -63,6 +63,15 @@ export async function getCartCheckoutReport(req, res, next) {
   }
 }
 
+export async function getTrafficSourcesReport(req, res, next) {
+  try {
+    const data = await reportingService.getTrafficSourcesReport(req.website, req.reportQuery);
+    sendSuccess(res, data);
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function getRevenueReport(req, res, next) {
   try {
     const data = await reportingService.getRevenueReport(req.website, req.reportQuery);

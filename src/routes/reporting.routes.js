@@ -26,6 +26,7 @@ import {
   getConversionReport,
   getCartCheckoutReport,
   getRevenueReport,
+  getTrafficSourcesReport,
   listVisitors,
   getVisitorDetail,
   listSessions,
@@ -53,6 +54,7 @@ router.get('/:websiteId/products/:productId', validateProductIdParam, validateRe
 router.get('/:websiteId/conversion', validateReportQuery, getConversionReport);
 router.get('/:websiteId/cart-checkout', validateReportQuery, getCartCheckoutReport);
 router.get('/:websiteId/revenue', validateReportQuery, getRevenueReport);
+router.get('/:websiteId/traffic-sources', validateReportQuery, getTrafficSourcesReport);
 
 // Phase 12.5 — Tracking Observability: raw Visitor/Session/Event/Order
 // activity, read-only, same auth -> ownership -> validate -> controller ->

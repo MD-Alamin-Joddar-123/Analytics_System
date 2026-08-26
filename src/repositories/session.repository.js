@@ -37,6 +37,21 @@ export const sessionRepository = {
 
   // --- Phase 12.5: Tracking Observability (read-only listing/detail) ---
 
+  // Every session that STARTED inside the range, reduced to just its
+  // entry referrer. Projected down to the one field the traffic-source
+  // report needs rather than loading whole documents — a busy site can
+  // have a lot of sessions in a week, and none of the rest is used.
+  //
+  // Grouped in Mongo rather than in JavaScript so the response size is
+  // bounded by the number of DISTINCT referrers, not by session count.
+  async aggregateEntryReferrers(websiteId, from, to) {
+    return Session.aggregate([
+      { $match: { websiteId, startedAt: { $gte: from, $lt: to } } },
+      { $group: { _id: '$entryReferrer', sessions: { $sum: 1 } } },
+      { $sort: { sessions: -1 } },
+    ]);
+  },
+
   async findManyByWebsite(websiteId, { sortField, sortOrder, skip, limit }) {
     return Session.find({ websiteId })
       .sort({ [sortField]: sortOrder })
