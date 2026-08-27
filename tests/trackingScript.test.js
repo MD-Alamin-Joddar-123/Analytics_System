@@ -23,10 +23,6 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-// Phase 11's one backend change (docs/SDK_ARCHITECTURE.md §9): a static
-// route serving the built tracking SDK at the exact path the documented
-// installation snippet uses. This never touches /api/collect or any
-// existing business logic — these tests exist to prove that in isolation.
 describe('GET /tracking.js (Phase 11)', () => {
   test('serves the built SDK with a JavaScript content type, when the build artifact exists', { skip: !fs.existsSync(TRACKING_SCRIPT_PATH) }, async () => {
     const res = await fetch(`${baseUrl}/tracking.js`);
@@ -56,14 +52,6 @@ describe('GET /tracking.js (Phase 11)', () => {
 
 describe('GET /tracking.js — missing build artifact is a clean 404, never a 500 (regression guard)', () => {
   test('a nonexistent path under the same static-serving mechanism 404s cleanly via the standard error envelope', async () => {
-    // We don't delete the real build artifact (that would be destructive
-    // to a developer's local build); instead this proves the *shape* of
-    // the app's 404 handling that /tracking.js itself falls back to when
-    // fs.existsSync() is false — see notFoundHandler.js / errorHandler.js,
-    // both already covered by tests/notFound.test.js. This test just
-    // confirms /tracking.js is wired through the same standard app-level
-    // 404 path, not a bespoke one, by checking a sibling nonexistent route
-    // returns the identical envelope shape.
     const res = await fetch(`${baseUrl}/this-route-does-not-exist.js`);
     const body = await res.json();
     assert.equal(res.status, 404);

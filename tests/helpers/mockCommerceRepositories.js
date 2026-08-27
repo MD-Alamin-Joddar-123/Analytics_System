@@ -11,14 +11,6 @@ function nextId(prefix) {
   return `${prefix}-${idCounter}`;
 }
 
-// Lightweight, stateless pass-through mocks for the Phase 6 commerce
-// repositories — every "find" resolves to nothing found, every "create"
-// just echoes the document back with a fake id. Sufficient for tests that
-// only care that event collection itself still works correctly now that
-// it also touches these repositories (Phase 4/5 regression tests), where
-// the resulting commerce documents themselves aren't under test. Tests
-// that DO need to inspect realistic commerce state across requests use
-// the fuller `setupMockPipeline` in mockCollectPipeline.js instead.
 export function mockCommerceRepositories(t) {
   t.mock.method(productRepository, 'findByWebsiteAndExternalId', async () => null);
   t.mock.method(productRepository, 'create', async (doc) => ({ ...doc, _id: nextId('product') }));

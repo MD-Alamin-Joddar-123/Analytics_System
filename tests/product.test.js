@@ -41,7 +41,7 @@ describe('Product upsert', () => {
     assert.equal(products.size, 1);
     const product = products.get(`${WEBSITE_A}:p123`);
     assert.equal(product.name, 'Laptop');
-    assert.equal(product.price, 85050); // 850.50 -> integer minor units
+    assert.equal(product.price, 85050);
     assert.equal(Number.isInteger(product.price), true);
     assert.equal(product.currency, 'BDT');
   });

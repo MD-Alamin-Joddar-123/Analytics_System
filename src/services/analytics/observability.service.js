@@ -13,19 +13,6 @@ import {
   VISITOR_SESSION_HISTORY_MAX,
 } from '../../constants/reportingLimits.js';
 
-// Phase 12.5 — Tracking Observability. Exposes the RAW Visitor/Session/
-// Event/Order/OrderItem documents Phases 4-6 already collect, read-only,
-// for the dashboard's "underlying tracking activity" view — a different
-// concern from reporting.service.js (which reads the Phase 8 AGGREGATE
-// buckets). Every function here takes the already ownership-verified
-// `website` (req.website, from verifyWebsiteOwnership) and never trusts a
-// client-supplied websiteId directly.
-//
-// Every serializer below is an explicit field-by-field allow-list — never
-// a raw `.toJSON()`/`{...doc}` spread — so a MongoDB `_id`, an internal
-// Mongoose field, or (for Event.data specifically) any future schema
-// addition can never leak into a response without a deliberate code change
-// here. See serializeEventData's own comment for why that one matters most.
 
 function toMoney(minorAmount) {
   if (minorAmount === undefined || minorAmount === null) return null;
@@ -47,7 +34,6 @@ function serializeDevice(doc) {
   };
 }
 
-// --- Visitors --------------------------------------------------------------
 
 function serializeVisitorSummary(visitor) {
   return {
@@ -126,7 +112,6 @@ async function getVisitorDetail(website, visitorId) {
   };
 }
 
-// --- Sessions ----------------------------------------------------------------
 
 function serializeSessionSummary(session) {
   return {
@@ -143,13 +128,6 @@ function serializeSessionSummary(session) {
   };
 }
 
-// Event.data is ALREADY a narrow, explicit Mongoose sub-schema (not
-// Mixed) — see Event.js's own comment on why. This is a second,
-// independent allow-list on top of that one: even if the schema were ever
-// widened, only the fields listed here would ever reach an API response.
-// Every one of these is ecommerce activity data (product/order facts);
-// none is payment-credential or personal-form data, which the schema
-// never stores in the first place.
 function serializeEventData(data) {
   if (!data) return null;
   const out = {};
@@ -224,7 +202,6 @@ async function getSessionDetail(website, sessionId) {
   };
 }
 
-// --- Events --------------------------------------------------------------
 
 function serializeEventSummary(event) {
   return {
@@ -282,7 +259,6 @@ async function getEventDetail(website, eventId) {
   return serializeEventDetail(event);
 }
 
-// --- Orders --------------------------------------------------------------
 
 function serializeOrderSummary(order, itemCount) {
   return {
@@ -342,12 +318,6 @@ async function getOrderDetail(website, orderId) {
 
   const items = await orderItemRepository.findByOrder(websiteId, order._id);
 
-  // Best-effort "linked checkout" (§ "linked checkout when available"):
-  // Order itself stores no checkoutId (Phase 6 design — see Order.js), so
-  // this resolves it via the purchase Event that produced the order,
-  // which does carry `data.checkoutId` when the client sent one. Absent
-  // for any reason (no matching event, no checkoutId on it, or no
-  // matching Checkout document), this is simply omitted — never an error.
   let linkedCheckout = null;
   const purchaseEvent = await eventRepository.findPurchaseEventByOrderId(websiteId, orderId);
   const checkoutId = purchaseEvent?.data?.checkoutId;

@@ -43,7 +43,7 @@ describe('Cart / CartItem — add_to_cart', () => {
     assert.equal(carts.size, 1);
     const cart = carts.get(`${WEBSITE_A}:cart-1`);
     assert.equal(cart.itemCount, 1);
-    assert.equal(cart.subtotal, 1000); // 10 USD -> 1000 minor units
+    assert.equal(cart.subtotal, 1000);
 
     assert.equal(cartItems.size, 1);
     const item = cartItems.get(`${WEBSITE_A}:cart-1:p1`);
@@ -69,19 +69,19 @@ describe('Cart / CartItem — add_to_cart', () => {
     await post(pipeline, addToCart({ productId: 'p1', quantity: 3 }));
 
     assert.equal(cartItems.size, 1);
-    assert.equal(cartItems.get(`${WEBSITE_A}:cart-1:p1`).quantity, 5); // incremental, 2 + 3
+    assert.equal(cartItems.get(`${WEBSITE_A}:cart-1:p1`).quantity, 5);
   });
 
   test('Cart.itemCount and subtotal accumulate correctly across multiple adds', async (t) => {
     const pipeline = setupMockCommercePipeline(t);
     const { carts } = pipeline;
 
-    await post(pipeline, addToCart({ productId: 'p1', price: 10, quantity: 2 })); // 20.00
-    await post(pipeline, addToCart({ productId: 'p2', price: 5, quantity: 1 })); // 5.00
+    await post(pipeline, addToCart({ productId: 'p1', price: 10, quantity: 2 }));
+    await post(pipeline, addToCart({ productId: 'p2', price: 5, quantity: 1 }));
 
     const cart = carts.get(`${WEBSITE_A}:cart-1`);
     assert.equal(cart.itemCount, 3);
-    assert.equal(cart.subtotal, 2500); // 25.00 in minor units
+    assert.equal(cart.subtotal, 2500);
   });
 
   test('cross-website cart isolation: the same cartId on two websites is independent', async (t) => {
@@ -186,7 +186,7 @@ describe('Cart / CartItem — remove_from_cart', () => {
     await post(pipeline, {
       websiteId: WEBSITE_A,
       event: 'remove_from_cart',
-      data: { cartId: 'cart-1', productId: 'p1', quantity: 100 }, // way more than the 2 present
+      data: { cartId: 'cart-1', productId: 'p1', quantity: 100 },
     });
 
     assert.equal(cartItems.has(`${WEBSITE_A}:cart-1:p1`), false);
@@ -203,7 +203,7 @@ describe('Cart / CartItem — remove_from_cart', () => {
     const { res } = await post(pipeline, {
       websiteId: WEBSITE_A,
       event: 'remove_from_cart',
-      data: { cartId: 'cart-1', productId: 'p1', quantity: 1 }, // no price field
+      data: { cartId: 'cart-1', productId: 'p1', quantity: 1 },
     });
 
     assert.equal(res.status, 202);
@@ -219,7 +219,7 @@ describe('Cart / CartItem — remove_from_cart', () => {
       data: { cartId: 'never-existed', productId: 'p1', quantity: 1 },
     });
 
-    assert.equal(res.status, 202); // the event itself is still accepted
+    assert.equal(res.status, 202);
     assert.equal(carts.size, 0);
   });
 });

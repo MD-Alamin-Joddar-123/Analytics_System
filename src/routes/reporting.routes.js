@@ -39,12 +39,6 @@ import {
 
 const router = Router({ mergeParams: true });
 
-// Phase 9 §9: every reporting route requires authentication AND ownership
-// of the requested website — JWT -> authenticated user -> requested
-// website -> ownership verification -> [validators] -> controller ->
-// service -> repository -> MongoDB. `:websiteId` is the PUBLIC tracking
-// id (the same identifier every analytics collection is keyed by), not
-// Website's internal `_id` — see verifyWebsiteOwnership.js.
 router.use('/:websiteId', authenticate, verifyWebsiteOwnership);
 
 router.get('/:websiteId/overview', validateReportQuery, getOverview);
@@ -56,9 +50,6 @@ router.get('/:websiteId/cart-checkout', validateReportQuery, getCartCheckoutRepo
 router.get('/:websiteId/revenue', validateReportQuery, getRevenueReport);
 router.get('/:websiteId/traffic-sources', validateReportQuery, getTrafficSourcesReport);
 
-// Phase 12.5 — Tracking Observability: raw Visitor/Session/Event/Order
-// activity, read-only, same auth -> ownership -> validate -> controller ->
-// service -> repository chain as every route above.
 router.get('/:websiteId/visitors', validateVisitorSort, validatePagination, listVisitors);
 router.get('/:websiteId/visitors/:visitorId', validateVisitorIdParam, getVisitorDetail);
 

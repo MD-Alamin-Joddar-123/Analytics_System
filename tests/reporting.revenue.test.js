@@ -36,7 +36,7 @@ describe('GET /api/reports/:websiteId/revenue', () => {
     assert.equal(res.status, 200);
     assert.equal(body.data.grossRevenue, 1000);
     assert.equal(body.data.orderCount, 4);
-    assert.equal(body.data.averageOrderValue, 250); // 1000 / 4
+    assert.equal(body.data.averageOrderValue, 250);
     assert.equal(body.data.currency, 'USD');
   });
 
@@ -57,9 +57,6 @@ describe('GET /api/reports/:websiteId/revenue', () => {
 
   test('sums revenue correctly across multiple buckets without floating-point drift', async (t) => {
     const pipeline = setupMockReportingPipeline(t);
-    // 10 buckets of 33 minor units each — a classic float-accumulation
-    // trap (0.1 + 0.1 + ... style) if summed as major-unit floats. Summed
-    // as integer minor units, this must land exactly on 330 -> 3.3 major.
     for (let i = 0; i < 10; i += 1) {
       pipeline.seedBucket({ bucket: new Date(`2026-08-${String(10 + i).padStart(2, '0')}T00:00:00.000Z`), orders: 1, grossRevenueMinor: 33, netRevenueMinor: 33 });
     }
@@ -119,10 +116,10 @@ describe('GET /api/reports/:websiteId/conversion', () => {
     assert.equal(body.data.orders, 10);
     assert.equal(body.data.uniqueVisitors, 2);
     assert.equal(body.data.uniqueSessions, 1);
-    assert.equal(body.data.conversionRates.addToCartRate, 20); // 40/200*100
-    assert.equal(body.data.conversionRates.visitorConversionRate, 500); // 10/2*100
-    assert.equal(body.data.conversionRates.sessionConversionRate, 1000); // 10/1*100
-    assert.equal(body.data.conversionRates.purchaseConversionRate, 50); // 10/20*100
+    assert.equal(body.data.conversionRates.addToCartRate, 20);
+    assert.equal(body.data.conversionRates.visitorConversionRate, 500);
+    assert.equal(body.data.conversionRates.sessionConversionRate, 1000);
+    assert.equal(body.data.conversionRates.purchaseConversionRate, 50);
   });
 
   test('an empty range safely zeroes every rate', async (t) => {
@@ -154,7 +151,7 @@ describe('GET /api/reports/:websiteId/cart-checkout', () => {
       cartValueMinor: 999900,
       checkoutStarted: 8,
       checkoutCompleted: 4,
-      grossRevenueMinor: 40000, // deliberately different from cartValueMinor
+      grossRevenueMinor: 40000,
     });
 
     const res = await get(
@@ -172,8 +169,8 @@ describe('GET /api/reports/:websiteId/cart-checkout', () => {
     assert.equal(body.data.cartValue, 9999);
     assert.equal(body.data.checkoutStarted, 8);
     assert.equal(body.data.checkoutCompleted, 4);
-    assert.equal(Object.prototype.hasOwnProperty.call(body.data, 'grossRevenue'), false); // not a revenue report
-    assert.notEqual(body.data.cartValue, 400); // must never equal the (converted) revenue figure
+    assert.equal(Object.prototype.hasOwnProperty.call(body.data, 'grossRevenue'), false);
+    assert.notEqual(body.data.cartValue, 400);
     assert.equal(body.data.conversionRates.cartToCheckoutRate, calcRate(8, 12));
     assert.equal(body.data.conversionRates.checkoutCompletionRate, calcRate(4, 8));
   });

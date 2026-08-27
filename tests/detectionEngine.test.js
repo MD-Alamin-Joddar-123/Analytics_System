@@ -52,9 +52,6 @@ describe('detectProductConfig — JSON-LD product page', () => {
   });
 
   test('detects a DOM-based product id selector, not a URL param, when a data attribute is present elsewhere', () => {
-    // The id is on the add-to-cart button in this fixture, discoverable
-    // via the common data-product-id convention even without matching
-    // JSON-LD sku exactly on the SAME element as name/price.
     assert.equal(result.productIdSource.value, 'selector');
   });
 });
@@ -105,15 +102,10 @@ describe('detectProductConfig — nothing detectable', () => {
     assert.equal(result.productNameSelector, undefined);
     assert.equal(result.productPriceSelector, undefined);
     assert.equal(result.addToCartSelector, undefined);
-    // URL pattern and the productIdSource default are still emitted —
-    // they're structural facts, not guesses about page content.
     assert.equal(value(result.productUrlPattern), '/about');
   });
 });
 
-// Mirrors the user's own worked example almost exactly: a Bootstrap
-// card-based order page with .card > p order id, .mt-3 h5 total, and a
-// flex-row repeated item list.
 describe('detectOrderConfig — Bootstrap order-confirmation page (matches the user\'s own example shape)', () => {
   const HTML = `
     <html><body>
@@ -184,8 +176,6 @@ describe('detectOrderConfig — Bootstrap order-confirmation page (matches the u
     assert.equal(value(dollarOnly.orderCurrency), 'CAD');
     assert.equal(dollarOnly.orderCurrency.source, 'website-settings');
 
-    // And with no settings configured, an unresolvable marker means the
-    // field is omitted entirely — money is never guessed.
     const noSettings = detectOrderConfig(
       `<html><body>
         <nav>Home | Shop | My Orders | Account</nav>
@@ -331,12 +321,6 @@ describe('detectOrderConfig — no repeating items at all', () => {
   });
 });
 
-// --- Page-shape classification (why detection failed, not just that it did) ---
-//
-// A silent empty result for "wrong kind of page entirely" (a listing grid,
-// a login redirect, a near-empty JS shell) is indistinguishable from "this
-// really is a product/order page with unusual markup" — these tests prove
-// each wrong-page shape is caught and explained instead.
 
 function assertClassification(fn, expectedReason) {
   assert.throws(fn, (error) => {
@@ -384,8 +368,6 @@ describe('detectProductConfig — page-shape classification', () => {
           <div class="related-card"><a href="/products/pabda">Pabda</a><span class="p">600.00</span></div>
         </div>
       </body></html>`;
-    // Must not throw — JSON-LD Product is decisive evidence this IS a
-    // single product page, regardless of the related-products grid below it.
     const result = detectProductConfig(HTML, 'https://shop.example.com/products/rui-fish');
     assert.equal(value(result.productNameSelector), 'h1.product-title');
   });
@@ -470,8 +452,6 @@ describe('detectOrderConfig — page-shape classification', () => {
         your order number can be found in that email for your reference.</p>
         <footer>© 2026 Example Shop. All rights reserved.</footer>
       </body></html>`;
-    // No id/total selector configured cleanly enough to detect, but the
-    // page content itself is clearly order-shaped — must NOT throw.
     const result = detectOrderConfig(HTML, 'https://shop.example.com/my-orders/1', 'BDT');
     assert.equal(result.orderIdSelector, undefined);
   });
@@ -492,20 +472,6 @@ describe('detectOrderConfig — page-shape classification', () => {
   });
 });
 
-// ===========================================================================
-// Fixture-driven layered-detection tests
-//
-// Each fixture in tests/fixtures/detectionEngine/ is a realistic page whose
-// markup supports exactly ONE priority layer, so every suite below proves
-// both (a) that the right layer triggered and (b) that the confidence badge
-// the dashboard will show matches the layer contract:
-//
-//   P1 structured  -> high        P3 heuristic -> low
-//   P2 platform    -> medium      (exact platform fingerprints -> high)
-//
-// plus that every selector actually WORKS against its fixture — queried
-// with cheerio, it must resolve to the element holding the expected value.
-// ===========================================================================
 
 const FIXTURE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'detectionEngine');
 
@@ -517,10 +483,6 @@ function textAt(html, selector) {
   return cheerio.load(html)(selector).text().trim();
 }
 
-// Regression for a real customer page: the signup record said USD, but the
-// order total plainly reads "119960.00 BDT" while USD appears ONLY in noise
-// (og:price meta, a third-party <script> snippet, an <aside> promo, footer
-// shipping note). Detection must report BDT at high confidence.
 describe('fixture: order-confirmation-bdt-total.html — page currency beats stale settings, decoys ignored', () => {
   const HTML = loadFixture('order-confirmation-bdt-total.html');
   const result = detectOrderConfig(HTML, 'https://meghna.example.com/orders/ORD-20260820-7734', 'USD');
@@ -805,8 +767,6 @@ describe('fixture: order-confirmation-jsonld.html — order Priority 1 (JSON-LD 
 
   test('order id comes from schema.org/Order orderNumber rendered on the page', () => {
     assert.equal(result.orderIdSelector.source, 'json-ld');
-    // The id's rendered element needed only a structural selector, which
-    // caps the badge one notch below the layer's base confidence.
     assert.equal(result.orderIdSelector.confidence, 'medium');
     const extracted = new RegExp(value(result.orderIdRegex)).exec(textAt(HTML, value(result.orderIdSelector)));
     assert.equal(extracted[1], 'ORD-20260819-4417');
@@ -904,29 +864,15 @@ describe('orderIdRegexFor shapes — hashed, hex, and digit-word ids each extrac
   });
 });
 
-// ---------------------------------------------------------------------------
-// Regression: a genuine Django/Ogani-template product page
-// (https://online-fish-market-six.vercel.app/products/rui/) was classified as
-// listing_page because five sibling Bootstrap .container wrappers each
-// happened to contain some digit and some link in their subtrees and were
-// therefore accepted as a "repeated product-card grid". The page's real
-// signals were all too weak to override it: the only purchase control is an
-// anchor labelled "ADD TO CARD" (typo), the title is a bare <h3> with no h1,
-// and prices render without any currency symbol.
-// ---------------------------------------------------------------------------
 describe('fixture: product-bem-details-tabs.html — BEM/Django product page with layout containers', () => {
   const HTML = loadFixture('product-bem-details-tabs.html');
   const result = detectProductConfig(HTML, 'https://fish.example.com/products/rui/');
 
   test('is NOT misclassified as a listing despite five sibling .container wrappers', () => {
-    // Must reach field detection rather than throwing DetectionClassificationError.
     assert.ok(result.productPriceSelector);
   });
 
   test('layout containers are not treated as repeated product cards; the related rail is', () => {
-    // Indirectly proven by the two assertions above and below: if the
-    // containers still counted as cards AND no override fired, this fixture
-    // would have thrown listing_page before any selector was produced.
     assert.equal(value(result.productUrlPattern), '/products/*');
   });
 
@@ -940,9 +886,6 @@ describe('fixture: product-bem-details-tabs.html — BEM/Django product page wit
     assert.equal(value(result.productPriceSelector), 'div.product__details__price');
     assert.equal(result.productPriceSelector.confidence, 'medium');
     const extracted = new RegExp(value(result.productPriceRegex)).exec(textAt(HTML, value(result.productPriceSelector)));
-    // Known limitation, documented here on purpose: the regex grabs the
-    // FIRST number in the element, which is the <del> strikethrough original
-    // when a discount precedes the current price at runtime.
     assert.equal(extracted[1], '8000.00');
   });
 
@@ -958,11 +901,6 @@ describe('fixture: product-bem-details-tabs.html — BEM/Django product page wit
   });
 });
 
-// Regression for academy.adspillar.com: a WooCommerce + page-builder course
-// page that Auto Detect rejected outright as a sign-in page, because the
-// theme ships a customer login form (plus a hidden login modal) in the
-// header of EVERY page. The same fixture also pins the price-scoping fix —
-// its price class appears four times and the real one is not the first.
 describe('fixture: product-woocommerce-themed-login-widget.html — login widgets and repeated price classes', () => {
   const HTML = loadFixture('product-woocommerce-themed-login-widget.html');
   const URL = 'https://academy.example.com/product/ai-data-science/';
@@ -983,8 +921,6 @@ describe('fixture: product-woocommerce-themed-login-widget.html — login widget
     const selector = value(result.productPriceSelector);
     assert.ok(selector, 'a price selector must be produced');
 
-    // The runtime SDK reads a selector with querySelector(), i.e. the FIRST
-    // match — assert on exactly that element, not on "some match somewhere".
     const $ = cheerio.load(HTML);
     const firstMatch = $(selector).first().text().trim();
     assert.match(firstMatch, /49\.99/);
@@ -1010,10 +946,6 @@ describe('fixture: product-woocommerce-themed-login-widget.html — login widget
   test('the add-to-cart button and the variation form id are both found', () => {
     const result = detectProductConfig(HTML, URL);
 
-    // Asserted by what the selector RESOLVES TO rather than by its exact
-    // text: `[name="add-to-cart"]` and `button.single_add_to_cart_button`
-    // are both correct answers here, and pinning one spelling would fail
-    // the next time the cascade legitimately prefers the other.
     const $ = cheerio.load(HTML);
     const $cta = $(value(result.addToCartSelector)).first();
     assert.equal($cta.length, 1);
@@ -1083,13 +1015,6 @@ describe('login classification — a password field is evidence only when the fo
   });
 });
 
-// Regression for academy.adspillar.com's WooCommerce order-received page.
-// WooCommerce renders the confirmation WRAPPER to anonymous visitors but
-// hides the order behind "Please log in to your account to view this
-// order." — and the login form it ships carries the very same `hidden-form`
-// class the theme uses for its always-present header modal, so DOM
-// visibility cannot tell a real login wall from a decorative one. The
-// sentence is what distinguishes them.
 describe('order pages behind a login wall are explained, not silently empty', () => {
   const WALLED_ORDER = `
     <html><head><title>Checkout | Academy</title></head><body>
@@ -1112,9 +1037,6 @@ describe('order pages behind a login wall are explained, not silently empty', ()
   });
 
   test('the "hidden-form" class alone never decides it — the wall sentence does', () => {
-    // Same markup, same hidden-form class, but no wall sentence: this is
-    // the header login modal on a genuine order page, which must still be
-    // detected normally.
     const REAL_ORDER = WALLED_ORDER.replace(
       'Thank you. Your order has been received. Please log in to your account to view this order.',
       'Thank you. Your order has been received. Order number: 48584 — Order Total: 289.99 BDT'
@@ -1124,8 +1046,6 @@ describe('order pages behind a login wall are explained, not silently empty', ()
   });
 
   test('"You must be logged in to post a review" is NOT a login wall', () => {
-    // Extremely common in the WooCommerce reviews tab. It is a different
-    // sentence about a different thing, and must never gate a product page.
     const HTML = `
       <html><head><title>Rui Fish</title></head><body>
         <nav>Home | Shop | About | Contact</nav>
@@ -1142,11 +1062,6 @@ describe('order pages behind a login wall are explained, not silently empty', ()
 });
 
 describe('site chrome never supplies a product field', () => {
-  // Reduced from the real page: the breadcrumb repeats the product name
-  // verbatim, comes FIRST in the document, and is exactly as "small" as the
-  // <h1> — so it used to win and the saved selector pointed at navigation.
-  // The theme also stamps data-sku="0" on its header search form as an
-  // on/off flag; taking that would have given every product the id "0".
   const HTML = `
     <html><head>
       <script type="application/ld+json">
@@ -1182,7 +1097,6 @@ describe('site chrome never supplies a product field', () => {
     const selector = value(result.productIdSelector);
     if (selector) {
       assert.doesNotMatch(selector, /searchform/);
-      // Whatever it settled on must resolve to a REAL id, not the flag.
       const $ = cheerio.load(HTML);
       const attrMatch = /::attr\(([^)]+)\)$/.exec(selector);
       const read = attrMatch
@@ -1200,14 +1114,6 @@ describe('site chrome never supplies a product field', () => {
   });
 });
 
-// Regression for the real WooCommerce order-received page. Its line items
-// were previously invisible to detection: the price sits inside a <bdi>
-// whose only leaf holds the currency symbol, and the quantity renders as
-// "× 1" — neither is a "clean number leaf", which was the only shape the
-// item detectors would accept. That restriction existed because the config
-// schema has no per-item regex field; the runtime now extracts the first
-// numeric token from a decorated value, so these are readable and worth
-// returning.
 describe('fixture: order-received-woocommerce-guest.html — decorated line-item values', () => {
   const HTML = loadFixture('order-received-woocommerce-guest.html');
   const URL = 'https://academy.example.com/checkout/order-received/48586/';
@@ -1246,9 +1152,6 @@ describe('fixture: order-received-woocommerce-guest.html — decorated line-item
   });
 
   test('every decorated item value is readable the way the runtime SDK reads it', () => {
-    // Mirrors parseNumber() in frontend/sdk/src/selectorTracking.js: a
-    // clean number if possible, otherwise the first numeric token. If this
-    // ever diverges, the detector is emitting selectors the SDK cannot use.
     const parseNumber = (text) => {
       if (text === undefined || text.trim().length === 0) return undefined;
       const direct = Number(text.replace(/,/g, ''));
@@ -1284,10 +1187,6 @@ describe('fixture: order-received-woocommerce-guest.html — decorated line-item
   });
 
   test('with no id attribute anywhere, the item id comes from the product link', () => {
-    // Not "no id": a per-order synthetic id is what the runtime falls back
-    // to otherwise, and that splits one product into a separate row per
-    // order. The link is stable across orders AND is the same identity a
-    // product-page visit derives from its own URL.
     const field = result.orderItemIdSelector;
     assert.ok(field, 'an item id must be derived from the product link');
     assert.equal(field.source, 'product-link');
@@ -1313,10 +1212,6 @@ describe('fixture: order-received-woocommerce-guest.html — decorated line-item
   });
 });
 
-// A product page and a catalogue page use DIFFERENT add-to-cart controls,
-// and Auto Detect only ever sees one of them. A selector built from the
-// product page silently ignores every add-to-cart made straight from the
-// shop grid — which is how most people actually shop.
 describe('add-to-cart detection covers the catalogue button too', () => {
   const PRODUCT_PAGE = `
     <html><body>
@@ -1346,7 +1241,6 @@ describe('add-to-cart detection covers the catalogue button too', () => {
     const selector = value(result.addToCartSelector);
     const $ = cheerio.load(PRODUCT_PAGE);
 
-    // 1 product-page button + 2 catalogue links.
     assert.equal($(selector).length, 3, `"${selector}" should match the product button and both catalogue links`);
   });
 
@@ -1367,10 +1261,6 @@ describe('add-to-cart detection covers the catalogue button too', () => {
   });
 });
 
-// A checkout page is an order confirmation page that has not happened yet:
-// the same repeating line items and total line, but no order number. Its
-// detection therefore reuses the order machinery — these pin that the
-// REUSE is correct and that the fields come back under checkout* names.
 describe('detectCheckoutConfig — cart/checkout pages', () => {
   const CHECKOUT = `
     <html><body>
@@ -1456,11 +1346,6 @@ describe('detectCheckoutConfig — cart/checkout pages', () => {
   });
 });
 
-// Regression for academy.adspillar.com's /checkout/: a cart belongs to a
-// browser SESSION, so a server fetch (no cookies) is served the storefront's
-// "your cart is empty" page instead — which carries the theme's login form
-// and is short, and so came back as "this page requires login". That sent
-// the reader hunting for an authentication problem that does not exist.
 describe('an empty cart is reported as an empty cart, not as a login wall', () => {
   const EMPTY_CART = `
     <html><head><title>Cart | Academy</title></head><body>
@@ -1503,8 +1388,6 @@ describe('an empty cart is reported as an empty cart, not as a login wall', () =
   });
 
   test('the pattern comes from the REQUESTED url, not a redirect target', () => {
-    // An empty checkout bounces to /cart/; a "/cart" trigger would never
-    // fire on the real, populated checkout page.
     const fields = (() => {
       try {
         detectCheckoutConfig(EMPTY_CART, 'https://academy.example.com/cart/', 'https://academy.example.com/checkout/');

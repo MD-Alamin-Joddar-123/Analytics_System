@@ -6,9 +6,6 @@ import { CURRENCY_CODES } from '../constants/currencies.js';
 
 const OBJECT_ID_REGEX = /^[a-f0-9]{24}$/i;
 const NAME_MAX_LENGTH = 120;
-// Statuses settable via PATCH. "archived" is intentionally excluded — that
-// transition only happens through DELETE /api/websites/:id, which carries
-// its own (idempotent) archive semantics.
 const PATCHABLE_STATUSES = ['active', 'paused'];
 
 function isNonEmptyString(value) {
@@ -66,11 +63,6 @@ function validateStatus(status) {
   return status;
 }
 
-// Client-supplied ownerId/websiteId/_id/createdAt/updatedAt are simply
-// never read here — only the fields explicitly picked below make it into
-// req.validated, so those fields have zero effect regardless of what the
-// request body contains. The server is the sole source of ownerId
-// (req.user.id) and websiteId (generated in the service layer).
 export function validateCreateWebsite(req, res, next) {
   try {
     const body = req.body || {};

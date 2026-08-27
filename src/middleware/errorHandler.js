@@ -20,8 +20,6 @@ function normalizeError(err) {
     return new ApiError(409, 'Duplicate resource', ErrorCodes.CONFLICT);
   }
 
-  // body-parser (express.json) errors — surfaced as generic JSON errors
-  // rather than the 500 they'd otherwise fall through to.
   if (err.type === 'entity.too.large') {
     return new ApiError(413, 'Payload too large.', ErrorCodes.PAYLOAD_TOO_LARGE);
   }
@@ -33,7 +31,6 @@ function normalizeError(err) {
   return new ApiError(500, 'Something went wrong', ErrorCodes.INTERNAL_SERVER_ERROR);
 }
 
-// eslint-disable-next-line no-unused-vars
 export function errorHandler(err, req, res, next) {
   const apiError = normalizeError(err);
 

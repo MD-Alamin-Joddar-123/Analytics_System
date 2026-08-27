@@ -1,8 +1,6 @@
 import { ApiError } from '../utils/ApiError.js';
 import { ErrorCodes } from '../constants/errorCodes.js';
 
-// Usage: router.get('/admin-only', authenticate, requireRole('admin'), handler)
-// Must run after `authenticate` so req.user is populated.
 export function requireRole(...roles) {
   return function requireRoleMiddleware(req, res, next) {
     if (!req.user) {

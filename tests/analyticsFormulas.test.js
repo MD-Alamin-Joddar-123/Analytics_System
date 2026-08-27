@@ -71,9 +71,9 @@ describe('calculateConversionRates', () => {
       checkoutCompleted: 10,
     });
     assert.deepEqual(rates, {
-      visitorConversionRate: 10, // 10/100 * 100
-      sessionConversionRate: 20, // 10/50 * 100
-      purchaseConversionRate: 50, // 10/20 * 100
+      visitorConversionRate: 10,
+      sessionConversionRate: 20,
+      purchaseConversionRate: 50,
     });
   });
 

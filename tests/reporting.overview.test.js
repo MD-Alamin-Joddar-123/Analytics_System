@@ -48,7 +48,7 @@ describe('GET /api/reports/:websiteId/overview', () => {
       netRevenueMinor: 20000,
     });
     pipeline.seedVisitorClaim({ granularity: 'day', bucket: new Date('2026-08-10T00:00:00.000Z'), anonymousId: 'v1' });
-    pipeline.seedVisitorClaim({ granularity: 'day', bucket: new Date('2026-08-11T00:00:00.000Z'), anonymousId: 'v1' }); // same visitor, different bucket
+    pipeline.seedVisitorClaim({ granularity: 'day', bucket: new Date('2026-08-11T00:00:00.000Z'), anonymousId: 'v1' });
     pipeline.seedVisitorClaim({ granularity: 'day', bucket: new Date('2026-08-10T00:00:00.000Z'), anonymousId: 'v2' });
     pipeline.seedSessionClaim({ granularity: 'day', bucket: new Date('2026-08-10T00:00:00.000Z'), sessionId: 's1' });
 
@@ -66,14 +66,12 @@ describe('GET /api/reports/:websiteId/overview', () => {
     assert.equal(body.data.checkoutStarted, 10);
     assert.equal(body.data.checkoutCompleted, 8);
     assert.equal(body.data.orders, 10);
-    assert.equal(body.data.grossRevenue, 1000); // (80000+20000) minor -> 1000 major
+    assert.equal(body.data.grossRevenue, 1000);
     assert.equal(body.data.refundedAmount, 50);
     assert.equal(body.data.netRevenue, 950);
-    // Distinct-visitor count: v1 appears in 2 buckets but is ONE distinct
-    // visitor across the range; naive summing would have said 3.
     assert.equal(body.data.uniqueVisitors, 2);
     assert.equal(body.data.uniqueSessions, 1);
-    assert.equal(body.data.conversionRate, 500); // orders(10)/uniqueVisitors(2)*100
+    assert.equal(body.data.conversionRate, 500);
     assert.equal(body.data.currency, 'USD');
   });
 
@@ -95,7 +93,7 @@ describe('GET /api/reports/:websiteId/overview', () => {
 
   test('zero uniqueVisitors safely produces conversionRate 0, never NaN/Infinity', async (t) => {
     const pipeline = setupMockReportingPipeline(t);
-    pipeline.seedBucket({ bucket: new Date('2026-08-10T00:00:00.000Z'), orders: 5 }); // orders but no visitors seen
+    pipeline.seedBucket({ bucket: new Date('2026-08-10T00:00:00.000Z'), orders: 5 });
 
     const res = await get(
       `/api/reports/${pipeline.websiteId}/overview?from=2026-08-01T00:00:00.000Z&to=2026-08-20T00:00:00.000Z`,
@@ -111,8 +109,8 @@ describe('GET /api/reports/:websiteId/overview', () => {
 
   test('date filtering: a bucket outside the requested range is excluded', async (t) => {
     const pipeline = setupMockReportingPipeline(t);
-    pipeline.seedBucket({ bucket: new Date('2026-08-10T00:00:00.000Z'), pageViews: 100 }); // inside
-    pipeline.seedBucket({ bucket: new Date('2025-01-01T00:00:00.000Z'), pageViews: 999 }); // outside
+    pipeline.seedBucket({ bucket: new Date('2026-08-10T00:00:00.000Z'), pageViews: 100 });
+    pipeline.seedBucket({ bucket: new Date('2025-01-01T00:00:00.000Z'), pageViews: 999 });
 
     const res = await get(
       `/api/reports/${pipeline.websiteId}/overview?from=2026-08-01T00:00:00.000Z&to=2026-08-20T00:00:00.000Z`,

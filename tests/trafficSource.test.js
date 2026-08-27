@@ -19,11 +19,6 @@ describe('classifyReferrer', () => {
   });
 
   test("the site's OWN pages are Internal, not a traffic source", () => {
-    // This is the common case, and the reason it needs its own channel: the
-    // backend starts a fresh session after an inactivity gap, so a visitor
-    // already browsing the site produces a session whose entry referrer is
-    // one of its own pages. Counting those as "Referral" would make the
-    // site look like its own biggest acquisition channel.
     for (const own of [
       'https://academy.adspillar.com/shop/',
       'https://www.academy.adspillar.com/cart/',
@@ -38,7 +33,6 @@ describe('classifyReferrer', () => {
   });
 
   test('a site whose name merely ENDS with the domain is not Internal', () => {
-    // "notacademy.adspillar.com" must not match "academy.adspillar.com".
     const { channel } = classifyReferrer('https://notacademy.adspillar.com/x', SITE);
     assert.notEqual(channel, TRAFFIC_CHANNELS.INTERNAL);
   });
@@ -78,8 +72,6 @@ describe('classifyReferrer', () => {
   });
 
   test('an unparseable referrer is kept as Referral rather than dropped', () => {
-    // Real data contains these. Dropping them would make the per-source
-    // counts stop adding up to the session total.
     const { channel, source } = classifyReferrer('android-app://com.example.thing', SITE);
     assert.equal(channel, TRAFFIC_CHANNELS.REFERRAL);
     assert.ok(source.length > 0);
@@ -105,7 +97,6 @@ describe('summarizeTrafficSources', () => {
   const bySource = Object.fromEntries(rows.map((r) => [r.source, r]));
 
   test('several referrer URLs from the same site collapse into ONE source row', () => {
-    // Two Google domains, two internal pages — four inputs, two rows.
     assert.equal(bySource['Internal'].sessions, 20);
     assert.equal(rows.filter((r) => r.channel === TRAFFIC_CHANNELS.SEARCH).length, 2, 'google.com and google.co.uk stay distinct hostnames');
   });
@@ -158,11 +149,9 @@ describe('buildTrafficSourceSeries', () => {
     const keep = ['Direct', 'Internal'];
     const { points, keys } = buildTrafficSourceSeries(BUCKETS, SITE, keep);
     assert.ok(keys.includes('Other'), 'an Other series must exist');
-    // Bucket 1: google (5) -> Other. Bucket 2: tiny.example (2) -> Other.
     assert.equal(points[0].Other, 5);
     assert.equal(points[1].Other, 2);
 
-    // Nothing may go missing: the lines still add up to every session.
     const plotted = points.reduce(
       (sum, point) => sum + keys.reduce((inner, key) => inner + point[key], 0),
       0
@@ -171,8 +160,6 @@ describe('buildTrafficSourceSeries', () => {
   });
 
   test('a series missing from a bucket is filled with 0, not left undefined', () => {
-    // Recharts draws a GAP for a missing key, which reads as "no data"
-    // rather than the truth, which is "nobody arrived from there".
     const { points, keys } = buildTrafficSourceSeries(BUCKETS, SITE, ['Direct', 'Internal', 'google.com']);
     for (const point of points) {
       for (const key of keys) {

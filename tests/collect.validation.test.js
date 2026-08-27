@@ -80,7 +80,7 @@ describe('POST /api/collect — validation', () => {
   });
 
   test('rejects a far-future timestamp', async (t) => {
-    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // +1 hour
+    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     const { res, body } = await collect({ ...base, timestamp: future }, t);
     assert.equal(res.status, 400);
     assert.equal(body.error.code, 'INVALID_TIMESTAMP');
@@ -143,7 +143,7 @@ describe('POST /api/collect — validation', () => {
 
   test('rejects an oversized raw payload (413)', async (t) => {
     mockPassthroughRepos(t);
-    const hugeTitle = 'x'.repeat(64 * 1024); // 64KB, well over the 32KB collector limit
+    const hugeTitle = 'x'.repeat(64 * 1024);
     const res = await fetch(`${baseUrl}/api/collect`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

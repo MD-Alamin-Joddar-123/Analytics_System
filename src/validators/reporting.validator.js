@@ -26,12 +26,8 @@ import {
 } from '../constants/reportingSort.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const PRODUCT_ID_MAX_LENGTH = 200; // matches Product/ProductAnalyticsBucket schema field length
-// Matches Visitor.anonymousId / Session.sessionId / Event.sessionId schema
-// maxlength (128) — these are opaque, client/server-generated strings, not
-// ObjectIds.
+const PRODUCT_ID_MAX_LENGTH = 200;
 const ANALYTICS_ID_MAX_LENGTH = 128;
-// Matches Order.externalOrderId schema maxlength.
 const ORDER_ID_MAX_LENGTH = 200;
 
 function parseIsoDate(value, label) {
@@ -59,12 +55,6 @@ function validateGranularityValue(value) {
   return granularity;
 }
 
-// Every reporting endpoint's from/to/granularity validation (Phase 9 §8) —
-// one shared middleware so the date-range/granularity contract is
-// identical across all seven report types. Attaches parsed, ready-to-query
-// primitives to req.reportQuery (Date objects, not raw strings), following
-// the same req.validated convention event.validator.js/website.validator.js
-// already established, so controllers/services never re-parse req.query.
 export function validateReportQuery(req, res, next) {
   try {
     const granularity = validateGranularityValue(req.query.granularity);
@@ -91,10 +81,6 @@ export function validateReportQuery(req, res, next) {
   }
 }
 
-// Product list pagination (§11/§13). Rejects non-integer, out-of-bounds,
-// or missing-but-malformed values rather than silently clamping them —
-// an invalid request should fail loudly, not quietly do something the
-// caller didn't ask for.
 export function validatePagination(req, res, next) {
   try {
     let page = PAGINATION_DEFAULT_PAGE;
@@ -123,11 +109,6 @@ export function validatePagination(req, res, next) {
   }
 }
 
-// The product list report's sort/order params (§12) — validated against
-// the explicit allow-list in reportingSort.js. This is the ONLY function
-// in the reporting layer that turns a client-supplied string into a Mongo
-// field name; every other caller of the sort receives only the already
-// resolved, safe field name via req.sort.field.
 export function validateProductSort(req, res, next) {
   try {
     const sortKey = req.query.sort === undefined ? DEFAULT_PRODUCT_SORT : req.query.sort;
@@ -150,10 +131,6 @@ export function validateProductSort(req, res, next) {
   }
 }
 
-// The product detail report's :productId param — this is the EXTERNAL
-// product id (§3/§4: "never expose MongoDB internal _id as the public
-// product identifier"), a free-form string up to the same length the
-// Product/ProductAnalyticsBucket schemas already allow, not an ObjectId.
 export function validateProductIdParam(req, res, next) {
   const { productId } = req.params;
   if (typeof productId !== 'string' || productId.trim().length === 0 || productId.length > PRODUCT_ID_MAX_LENGTH) {
@@ -162,18 +139,7 @@ export function validateProductIdParam(req, res, next) {
   next();
 }
 
-// --- Phase 12.5: Tracking Observability -----------------------------------
-// Same allow-list/fail-loudly philosophy as everything above: sort keys are
-// looked up through an explicit map (never a raw client string reaching
-// Mongo), pagination is the existing validatePagination, id params are
-// bounded plain strings (never coerced into a Mongo query operator object —
-// see readOptionalIdFilter below, which is the actual NoSQL-injection guard
-// for the visitor/session query-string filters on the Events list).
 
-// A single reusable string-length param validator generator — the four
-// observability :xId route params (visitorId/sessionId/eventId/orderId) all
-// share the exact same shape rule (Phase 5/6's own opaque public ids), just
-// with a different max length and error code.
 function createIdParamValidator(paramName, maxLength, errorCode) {
   return function validateIdParam(req, res, next) {
     const value = req.params[paramName];
@@ -188,10 +154,6 @@ export const validateVisitorIdParam = createIdParamValidator('visitorId', ANALYT
 export const validateSessionIdParam = createIdParamValidator('sessionId', ANALYTICS_ID_MAX_LENGTH, ErrorCodes.INVALID_SESSION_ID);
 export const validateOrderIdParam = createIdParamValidator('orderId', ORDER_ID_MAX_LENGTH, ErrorCodes.INVALID_ORDER_ID);
 
-// Event's public id uses the same shape as ingestion's own eventId
-// (event.validator.js's EVENT_ID_REGEX), so an invalid shape here can never
-// be a real event and is rejected the identical way — reusing INVALID_EVENT_ID
-// (Phase 4) rather than inventing a second "this isn't a real event id" code.
 const EVENT_ID_REGEX = /^[A-Za-z0-9_-]{1,128}$/;
 export function validateEventIdParam(req, res, next) {
   const { eventId } = req.params;
@@ -201,9 +163,6 @@ export function validateEventIdParam(req, res, next) {
   next();
 }
 
-// A generic sort validator factory — identical shape to validateProductSort
-// above, parameterized by field map/default so it isn't copy-pasted four
-// times for visitors/sessions/events/orders.
 function createSortValidator(fieldMap, defaultKey) {
   return function validateSort(req, res, next) {
     try {
@@ -230,11 +189,6 @@ export const validateSessionSort = createSortValidator(SESSION_SORT_FIELDS, DEFA
 export const validateEventSort = createSortValidator(EVENT_SORT_FIELDS, DEFAULT_EVENT_SORT);
 export const validateOrderSort = createSortValidator(ORDER_SORT_FIELDS, DEFAULT_ORDER_SORT);
 
-// The Events list's optional `from`/`to` — unlike validateReportQuery, both
-// are OPTIONAL (a raw activity list is still meaningful unranged, it's just
-// "most recent first") but a range, when given, must still be a valid ISO
-// date and bounded (§8 performance requirement), for the same reason the
-// aggregate reports bound their range.
 export function validateOptionalDateRange(req, res, next) {
   try {
     const { from: fromRaw, to: toRaw } = req.query;
@@ -273,9 +227,6 @@ export function validateOptionalDateRange(req, res, next) {
   }
 }
 
-// The Events list's `eventName` filter — an explicit allow-list against the
-// same SUPPORTED_EVENTS the collector itself accepts, never a raw string
-// passed through to Mongo unchecked.
 export function validateEventTypeFilter(req, res, next) {
   const { eventName } = req.query;
   if (eventName === undefined) {
@@ -290,14 +241,6 @@ export function validateEventTypeFilter(req, res, next) {
   next();
 }
 
-// The Events list's `visitorId`/`sessionId` query-string filters. These
-// values flow into a Mongo equality filter ({ anonymousId: value } /
-// { sessionId: value }) in event.repository.js — critically, they must be
-// validated as plain strings here FIRST. Express's query parser (qs) turns
-// `?visitorId[$ne]=` into an object, and passing an unvalidated object
-// straight into a Mongoose filter is a NoSQL-injection vector (a query
-// operator smuggled in where a literal value was expected). Rejecting
-// anything that isn't a plain string closes that off entirely.
 export function validateActivityIdFilters(req, res, next) {
   try {
     const filters = {};

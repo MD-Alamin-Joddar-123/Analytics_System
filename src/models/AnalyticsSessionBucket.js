@@ -2,9 +2,6 @@ import mongoose from 'mongoose';
 import { baseSchemaOptions } from './baseSchemaOptions.js';
 import { SUPPORTED_GRANULARITIES } from '../constants/analyticsGranularity.js';
 
-// Session counterpart to AnalyticsVisitorBucket — identical strategy, keyed
-// on the resolved session's sessionId instead of anonymousId (Phase 8
-// §11/§12). See that model's comment for the full rationale.
 const analyticsSessionBucketSchema = new mongoose.Schema(
   {
     websiteId: { type: String, required: true, trim: true },

@@ -11,20 +11,12 @@ const websiteSchema = new mongoose.Schema(
       trim: true,
       maxlength: 120,
     },
-    // Normalized hostname only (no scheme/path/port) — see src/utils/domain.js
-    // for the normalization rules. Not unique: the same hostname could
-    // legitimately need to move between a customer's websites during
-    // migration, and Phase 3 does not require cross-tenant domain
-    // uniqueness. Indexed to support future domain-based lookups.
     domain: {
       type: String,
       required: true,
       trim: true,
       lowercase: true,
     },
-    // Public tracking identifier — never the MongoDB _id. See
-    // src/utils/websiteId.js. Unique + indexed since /api/collect (Phase 4)
-    // will look websites up by this field on every tracked event.
     websiteId: {
       type: String,
       required: true,
@@ -54,18 +46,7 @@ const websiteSchema = new mongoose.Schema(
   baseSchemaOptions
 );
 
-// NOTE: the unique index on `websiteId` is created by the field-level
-// `unique: true` above — deliberately NOT restated as a schema.index() call
-// here, which would be a duplicate declaration and makes Mongoose log
-// "Duplicate schema index on {websiteId:1}" on every boot. Worth knowing:
-// migration 001 found that index genuinely missing from a live database
-// (the collection predated this schema and its indexes were never synced),
-// which had silently removed the collision guarantee website.service.js
-// relies on — declaring it is not the same as it existing in a given
-// database. See migrations/001-fix-website-indexes.mjs.
 
-// Supports "list my websites, newest first" (GET /api/websites) and
-// "list my websites filtered by status".
 websiteSchema.index({ ownerId: 1, createdAt: -1 });
 websiteSchema.index({ ownerId: 1, status: 1 });
 websiteSchema.index({ domain: 1 });

@@ -28,12 +28,8 @@ function put(websiteId, body, token) {
   });
 }
 
-// Same auth -> ownership scaffolding every reporting.routes.js test already
-// uses (this write route shares the identical middleware chain) — mocks
-// userRepository.findById and websiteRepository.findByWebsiteIdAndOwner,
-// returns { websiteId, token, seedWebsite, ... }.
 function mockConfigRepo(t) {
-  const store = new Map(); // websiteId -> saved fields
+  const store = new Map();
   t.mock.method(websiteTrackingConfigRepository, 'upsertByWebsiteId', async (websiteId, updates) => {
     const saved = { websiteId, ...updates, updatedAt: new Date() };
     store.set(websiteId, saved);
@@ -124,7 +120,7 @@ describe('PUT /api/config/:websiteId — authenticated, dashboard-only', () => {
     const res = await put(pipeline.websiteId, VALID_CONFIG, pipeline.token);
     const body = await res.json();
     assert.equal(res.status, 200);
-    assert.equal(body.data.config.orderCurrency, 'BDT'); // normalized to uppercase
+    assert.equal(body.data.config.orderCurrency, 'BDT');
     assert.equal(body.data.config.productNameSelector, 'h1.product-title');
     assert.equal(body.data.config.orderItemIdSelector, '[data-product-id]::attr(data-product-id)');
   });
@@ -230,8 +226,6 @@ describe('PUT /api/config/:websiteId — authenticated, dashboard-only', () => {
       },
       body: JSON.stringify(VALID_CONFIG),
     });
-    // The restrictive policy never reflects an arbitrary origin the way the
-    // public GET route does — no ACAO header for one outside CORS_ORIGINS.
     assert.notEqual(res.headers.get('access-control-allow-origin'), 'https://some-random-attacker-site.example');
   });
 });

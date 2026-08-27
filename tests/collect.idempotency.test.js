@@ -38,7 +38,7 @@ describe('POST /api/collect — idempotency (websiteId + eventId)', () => {
       makeFakeWebsite({ websiteId: id, status: 'active' })
     );
 
-    const store = new Map(); // simulates the unique (websiteId, eventId) index
+    const store = new Map();
     let createCallCount = 0;
     const enqueuedJobs = [];
     t.mock.method(eventRepository, 'findByWebsiteAndEventId', async (websiteId, eventId) =>
@@ -71,12 +71,8 @@ describe('POST /api/collect — idempotency (websiteId + eventId)', () => {
     assert.equal(secondBody.data.duplicate, true);
     assert.equal(secondBody.data.eventId, 'evt-fixed-123');
 
-    assert.equal(createCallCount, 1); // no second document was created
+    assert.equal(createCallCount, 1);
 
-    // Phase 7 §15/§16: the duplicate resubmission still attempts to
-    // (re-)enqueue a processing job for the SAME event — a safe no-op at
-    // the queue layer (deterministic jobId) if one is already queued, and
-    // what makes a stranded pending/failed event recoverable via retry.
     assert.equal(enqueuedJobs.length, 2);
     assert.equal(enqueuedJobs[0].eventObjectId, 'x');
     assert.equal(enqueuedJobs[1].eventObjectId, 'x');
@@ -86,9 +82,6 @@ describe('POST /api/collect — idempotency (websiteId + eventId)', () => {
     t.mock.method(websiteRepository, 'findByWebsiteId', async (id) =>
       makeFakeWebsite({ websiteId: id, status: 'active' })
     );
-    // Pre-check says "not seen yet" (lost the race), but the insert itself
-    // hits the unique index — the second call (re-querying for the
-    // winner) returns the document the concurrent request created.
     let lookupCalls = 0;
     t.mock.method(eventRepository, 'findByWebsiteAndEventId', async (websiteId, eventId) => {
       lookupCalls += 1;
@@ -113,7 +106,7 @@ describe('POST /api/collect — idempotency (websiteId + eventId)', () => {
     assert.equal(body.success, true);
     assert.equal(body.data.accepted, true);
     assert.equal(body.data.duplicate, true);
-    assert.equal(enqueueCalls, 1); // the winner's job still gets enqueued
+    assert.equal(enqueueCalls, 1);
   });
 
   test('the same eventId on two different websites is allowed (idempotency is per-website)', async (t) => {

@@ -4,12 +4,6 @@ import { createApp } from '../src/app.js';
 import { setupMockCommercePipeline } from './helpers/mockCommercePipeline.js';
 import { postAndProcess } from './helpers/postAndProcess.js';
 
-// Regression for a real customer report: an order containing TWO DIFFERENT
-// products never appeared on the Orders dashboard at all, while every
-// single-item order tracked correctly. This file drives the exact payload
-// the SDK's selector-mode extraction emits for a two-row fish-market order
-// confirmation page through the SAME ingestion -> worker pipeline, and
-// asserts the Order (with both line items) is stored and listed.
 const WEBSITE_ID = 'a1b2c3d4e5f60718';
 
 let server;
@@ -31,11 +25,6 @@ function post(pipeline, body) {
   return postAndProcess(baseUrl, body, pipeline);
 }
 
-// Exactly what frontend/sdk/src/selectorTracking.js runSelectorOrderDetection
-// dispatches when extractOrder() reads two .order-item rows:
-//   Row 1: Rui Fish   — id p-rui,   unit 59800, qty 1
-//   Row 2: Katla Fish — id p-katla, unit 30080, qty 2
-// Order total on the page: "119960.00 BDT".
 const twoItemPurchase = () => ({
   websiteId: WEBSITE_ID,
   event: 'purchase',
@@ -77,7 +66,7 @@ describe('Multi-item purchase — end-to-end (ingestion -> processing -> storage
 
     const order = orders.get(`${WEBSITE_ID}:ORD-20260820-7734`);
     assert.ok(order, 'order findable by websiteId + externalOrderId');
-    assert.equal(order.total, 11996000); // minor units
+    assert.equal(order.total, 11996000);
     assert.equal(order.currency, 'BDT');
 
     const lines = orderItems.filter((oi) => String(oi.orderId) === String(order._id));
@@ -91,7 +80,6 @@ describe('Multi-item purchase — end-to-end (ingestion -> processing -> storage
       { unitPrice: byProduct['p-katla'].unitPrice, quantity: byProduct['p-katla'].quantity },
       { unitPrice: 3008000, quantity: 2 }
     );
-    // Line totals sum to the order total — the reconciliation invariant.
     assert.equal(lines.reduce((sum, l) => sum + l.total, 0), order.total);
   });
 

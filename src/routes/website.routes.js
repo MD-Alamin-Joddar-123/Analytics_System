@@ -15,9 +15,6 @@ import {
 
 const router = Router();
 
-// Every website management route requires authentication and operates only
-// on the authenticated user's own websites — no admin/role check here by
-// design (ownership, not role, is the access boundary for Phase 3).
 router.use(authenticate);
 
 router.post('/', validateCreateWebsite, createWebsite);

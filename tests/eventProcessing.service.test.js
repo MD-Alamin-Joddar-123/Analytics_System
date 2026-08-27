@@ -27,10 +27,6 @@ function makeFakeEvent(overrides = {}) {
   };
 }
 
-// A minimal, self-contained mock store for these WORKER-focused tests —
-// simpler than the full mockCollectPipeline helper, since these tests
-// drive eventProcessingService.processEvent() directly (no HTTP, no
-// ingestion) and mostly need fine control over the loaded Event's state.
 function mockEventStore(t, initial) {
   const store = new Map([[initial._id, { ...initial }]]);
 
@@ -63,13 +59,6 @@ function mockEventStore(t, initial) {
     return { ...doc };
   });
 
-  // These tests are about visitor/session/commerce ORCHESTRATION, not
-  // analytics aggregation correctness (that's analyticsAggregation.service
-  // .test.js's job) — default to a no-op success so processEvent's new
-  // Phase 8 step never fails these tests for reasons unrelated to what
-  // they're actually testing. Individual tests override this when they
-  // specifically want to exercise the "analytics failure blocks
-  // completion" behavior.
   t.mock.method(analyticsAggregationService, 'aggregateEvent', async () => ({ aggregated: true }));
 
   return store;
@@ -233,12 +222,10 @@ describe('eventProcessingService.processEvent — failure and retry', () => {
     t.mock.method(visitorService, 'recordVisitorActivity', async () => {});
     t.mock.method(sessionService, 'resolveSession', async () => ({ session: null, isNew: false }));
 
-    // First attempt fails.
     await assert.rejects(() => eventProcessingService.processEvent('event-1'));
     assert.equal(store.get('event-1').processingStatus, 'failed');
     assert.equal(store.get('event-1').processingAttempts, 1);
 
-    // Second attempt (BullMQ retry) succeeds.
     const result = await eventProcessingService.processEvent('event-1');
     assert.equal(result.processed, true);
     assert.equal(store.get('event-1').processingStatus, 'completed');
@@ -246,15 +233,6 @@ describe('eventProcessingService.processEvent — failure and retry', () => {
   });
 
   test('the final state after all configured retries are exhausted is "failed", not silently discarded', async (t) => {
-    // eventProcessingService itself has no knowledge of BullMQ's attempts
-    // limit — that policy lives entirely in defaultJobOptions (§9,
-    // src/config/queue.js) and is enforced by BullMQ deciding whether to
-    // redeliver the job, which requires real Redis and is unverified in
-    // this sandbox (see final report). What IS this module's
-    // responsibility, and what this test verifies, is that every failed
-    // attempt — including what would be the last one — always leaves the
-    // event in an identifiable "failed" state with diagnostic
-    // information, never silently dropped.
     const store = mockEventStore(t, makeFakeEvent({ anonymousId: 'anon-1', processingAttempts: 4 }));
 
     t.mock.method(visitorService, 'resolveVisitor', async () => {

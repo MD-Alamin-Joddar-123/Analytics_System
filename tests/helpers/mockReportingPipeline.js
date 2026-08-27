@@ -36,31 +36,13 @@ function zeroed(fields) {
   return Object.fromEntries(fields.map((f) => [f, 0]));
 }
 
-// Realistic in-memory mock of the Phase 9 reporting repository methods
-// (analyticsRepository.sumBucketsInRange/findBucketsInRange,
-// productAnalyticsRepository.sumProductBucketsInRange/aggregateTopProducts,
-// visitor/sessionAnalyticsRepository.countDistinctInRange) — mirrors the
-// exact grouping/summing/sorting/pagination semantics the real MongoDB
-// aggregation pipelines implement (src/repositories/analytics/*.js), so
-// route -> controller -> service -> repository -> response tests exercise
-// real correctness properties (multi-tenant isolation, date-range
-// filtering, sorting, pagination) without live MongoDB. Production code
-// itself is untouched real Mongoose aggregation — this mock exists only at
-// the test boundary, same pattern as tests/helpers/mockAnalyticsRepositories.js
-// (Phase 8) and every repository mock before it in this codebase.
-//
-// Tests seed data directly into the returned stores (seedBucket/
-// seedProductBucket/seedVisitorClaim/seedSessionClaim) — this is
-// independent of Phase 8's aggregation *writing* path, which already has
-// its own dedicated test coverage; Phase 9 tests care about *reading* and
-// reporting on aggregated data, not re-deriving how it got there.
 export function setupMockReportingPipeline(t, { ownerId = 'user-1', websiteId = 'a1b2c3d4e5f60718', currency = 'USD' } = {}) {
-  const buckets = []; // AnalyticsBucket-shaped plain objects
-  const productBuckets = []; // ProductAnalyticsBucket-shaped plain objects
-  const visitorClaims = []; // { websiteId, granularity, bucket, anonymousId }
-  const sessionClaims = []; // { websiteId, granularity, bucket, sessionId }
-  const websites = new Map(); // websiteId -> fake website record
-  const products = new Map(); // `${websiteId}:${externalProductId}` -> fake product record
+  const buckets = [];
+  const productBuckets = [];
+  const visitorClaims = [];
+  const sessionClaims = [];
+  const websites = new Map();
+  const products = new Map();
 
   websites.set(websiteId, makeFakeWebsite({ websiteId, ownerId, currency, status: 'active' }));
 
@@ -119,7 +101,7 @@ export function setupMockReportingPipeline(t, { ownerId = 'user-1', websiteId = 
       .filter((p) => p.websiteId === wId && p.granularity === granularity && inRange(p.bucket, from, to))
       .sort((a, b) => a.bucket.getTime() - b.bucket.getTime());
 
-    const grouped = new Map(); // productId -> accumulator
+    const grouped = new Map();
     for (const p of matches) {
       let acc = grouped.get(p.productId);
       if (!acc) {
@@ -149,7 +131,6 @@ export function setupMockReportingPipeline(t, { ownerId = 'user-1', websiteId = 
     visitorClaims,
     sessionClaims,
 
-    // --- seed helpers ------------------------------------------------
     seedBucket(overrides) {
       const doc = { websiteId, granularity: 'day', currency, ...zeroed(BUCKET_COUNTER_FIELDS), ...overrides };
       buckets.push(doc);

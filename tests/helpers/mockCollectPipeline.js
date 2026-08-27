@@ -13,35 +13,13 @@ function nextId(prefix) {
   return `${prefix}-${idCounter}`;
 }
 
-// Mocks every repository the collector touches (website, event, visitor,
-// session, plus the Phase 6 commerce repositories via
-// mockCommerceRepositories) and the Phase 7 event queue, with realistic
-// in-memory stores (including duplicate-key race simulation on create),
-// so multi-request flows — "second event reuses the same visitor",
-// "session timeout creates a new one", "ingest then process" — can be
-// tested end-to-end through the real HTTP → validator → controller →
-// service chain without live MongoDB or Redis. Returns handles to the
-// underlying Maps for direct state inspection/manipulation (e.g.
-// backdating lastActivityAt to simulate timeout, or driving the worker's
-// processing logic directly against the same store).
 export function setupMockPipeline(t, { websiteId = 'a1b2c3d4e5f60718', websiteStatus = 'active' } = {}) {
-  const events = new Map(); // `${websiteId}:${eventId}` -> event doc
-  const visitors = new Map(); // `${websiteId}:${anonymousId}` -> visitor doc
-  const sessions = new Map(); // `${websiteId}:${sessionId}` -> session doc
-  const enqueuedJobs = []; // { eventObjectId, websiteId, eventId } — every enqueue call, in order
+  const events = new Map();
+  const visitors = new Map();
+  const sessions = new Map();
+  const enqueuedJobs = [];
 
-  // Phase 6: product_view/add_to_cart/checkout/purchase events now also
-  // touch the commerce repositories. Tests using this helper mostly don't
-  // care about commerce state (they're testing visitor/session behavior),
-  // so a lightweight pass-through is enough here — tests that DO need to
-  // inspect commerce documents mock those repositories themselves with
-  // real state after calling this (see the Phase 6 test files).
   mockCommerceRepositories(t);
-  // Phase 8: real (in-memory) analytics repositories so postAndProcess-
-  // driven tests exercise the actual aggregation path end-to-end rather
-  // than hitting live MongoDB. Tests that care about aggregated values
-  // inspect the returned `analytics` handle; tests that don't just get
-  // correct pass-through behavior for free.
   const analytics = mockAnalyticsRepositories(t);
 
   t.mock.method(websiteRepository, 'findByWebsiteId', async (id) =>
@@ -54,12 +32,6 @@ export function setupMockPipeline(t, { websiteId = 'a1b2c3d4e5f60718', websiteSt
   t.mock.method(eventRepository, 'findByWebsiteAndEventId', async (wId, eventId) =>
     events.get(`${wId}:${eventId}`) ?? null
   );
-  // Returns a shallow copy — real Mongoose findById() returns a fresh
-  // document snapshot each call, not a live reference into whatever
-  // in-memory store the driver happens to use. Without this, a later
-  // mutation (markProcessingStarted, etc.) on the stored record would
-  // retroactively change fields already read into a local variable by an
-  // in-flight caller, which can't happen against a real database.
   t.mock.method(eventRepository, 'findById', async (id) => {
     const record = [...events.values()].find((e) => e._id === id);
     return record ? { ...record } : null;
@@ -100,10 +72,6 @@ export function setupMockPipeline(t, { websiteId = 'a1b2c3d4e5f60718', websiteSt
     return record;
   });
 
-  // Default: enqueueing always "succeeds" without touching real
-  // Redis/BullMQ. Tests that specifically exercise queue failure
-  // (event.service.js's §21 behavior) re-mock this within the test itself
-  // to reject.
   t.mock.method(eventQueueService, 'enqueueEventProcessing', async (job) => {
     enqueuedJobs.push(job);
     return { id: `${job.websiteId}:${job.eventId}` };

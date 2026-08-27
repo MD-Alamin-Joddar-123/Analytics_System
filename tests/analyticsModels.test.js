@@ -7,11 +7,6 @@ import { AnalyticsSessionBucket } from '../src/models/AnalyticsSessionBucket.js'
 import { AnalyticsEventProcessed } from '../src/models/AnalyticsEventProcessed.js';
 import { SUPPORTED_GRANULARITIES } from '../src/constants/analyticsGranularity.js';
 
-// No live MongoDB in this sandbox (consistent with every prior phase) — but
-// a Mongoose schema's declared indexes/validation rules are inspectable
-// without a connection via `Model.schema.indexes()` / `Model.schema.path()`,
-// which is real, meaningful verification of §7/§33/§34's index requirements,
-// not a live-database integration test.
 
 function findUniqueIndex(model, fields) {
   return model.schema.indexes().find(([keys, options]) => {

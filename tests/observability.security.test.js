@@ -49,10 +49,8 @@ describe('Tracking Observability — authentication', () => {
   test('every listing endpoint requires a valid JWT', async (t) => {
     const pipeline = setupMockObservabilityPipeline(t);
     for (const endpoint of LIST_ENDPOINTS) {
-      // eslint-disable-next-line no-await-in-loop
       const res = await get(`/api/reports/${pipeline.websiteId}/${endpoint}`);
       assert.equal(res.status, 401, endpoint);
-      // eslint-disable-next-line no-await-in-loop
       const body = await res.json();
       assert.equal(body.error.code, 'AUTH_REQUIRED', endpoint);
     }
@@ -61,7 +59,6 @@ describe('Tracking Observability — authentication', () => {
   test('every detail endpoint requires a valid JWT', async (t) => {
     const pipeline = setupMockObservabilityPipeline(t);
     for (const endpoint of DETAIL_ENDPOINTS) {
-      // eslint-disable-next-line no-await-in-loop
       const res = await get(`/api/reports/${pipeline.websiteId}/${endpoint}`);
       assert.equal(res.status, 401, endpoint);
     }
@@ -87,16 +84,13 @@ describe('Tracking Observability — website ownership', () => {
     const attackerToken = signAuthToken({ _id: 'owner-B', role: 'user' });
 
     for (const endpoint of LIST_ENDPOINTS) {
-      // eslint-disable-next-line no-await-in-loop
       const res = await get(`/api/reports/${pipeline.websiteId}/${endpoint}`, attackerToken);
-      // eslint-disable-next-line no-await-in-loop
       const body = await res.json();
       assert.equal(res.status, 404, endpoint);
       assert.equal(body.error.code, 'WEBSITE_NOT_FOUND', endpoint);
       assert.equal(JSON.stringify(body).includes('order-1'), false, `${endpoint} must not leak data`);
     }
 
-    // Sanity: the real owner still can.
     const ownerRes = await get(`/api/reports/${pipeline.websiteId}/orders`, pipeline.token);
     assert.equal(ownerRes.status, 200);
   });
@@ -161,7 +155,6 @@ describe('Tracking Observability — performance: bounded pagination', () => {
   test('a limit far above the safe maximum is rejected on every listing endpoint', async (t) => {
     const pipeline = setupMockObservabilityPipeline(t);
     for (const endpoint of LIST_ENDPOINTS) {
-      // eslint-disable-next-line no-await-in-loop
       const res = await get(`/api/reports/${pipeline.websiteId}/${endpoint}?limit=999999`, pipeline.token);
       assert.equal(res.status, 400, endpoint);
     }

@@ -69,7 +69,6 @@ describe('POST /api/websites', () => {
     assert.equal(website.status, 'active');
     assert.equal(website.ownerId, undefined);
 
-    // websiteId is server-generated, distinct from the internal MongoDB id
     assert.match(website.websiteId, /^[a-f0-9]{16}$/);
     assert.notEqual(website.websiteId, website.id);
     assert.equal(captured.websiteId, website.websiteId);
@@ -86,7 +85,6 @@ describe('POST /api/websites', () => {
     let findByWebsiteIdCalls = 0;
     t.mock.method(websiteRepository, 'findByWebsiteId', async () => {
       findByWebsiteIdCalls += 1;
-      // First candidate "collides", second is free.
       return findByWebsiteIdCalls === 1 ? makeFakeWebsite() : null;
     });
     t.mock.method(websiteRepository, 'create', async (args) => makeFakeWebsite(args));

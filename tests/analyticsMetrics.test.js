@@ -2,10 +2,6 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { mapEventToBucketIncrements, mapEventToProductOperations } from '../src/constants/analyticsMetrics.js';
 
-// Pure-function tests (Phase 8 §37/§43 EVENT MAPPING) — no I/O, no mocks,
-// no database. These functions are the single source of truth for
-// "what does this event mean for analytics counters" — see
-// analyticsAggregation.service.js, the only caller.
 
 describe('mapEventToBucketIncrements — website-level counters', () => {
   test('page_view increments pageViews only', () => {
@@ -35,7 +31,7 @@ describe('mapEventToBucketIncrements — website-level counters', () => {
     });
     assert.equal(inc.cartItems, 1);
     assert.equal(inc.cartQuantity, 3);
-    assert.equal(inc.cartValueMinor, 1500); // 3 * 500, integer minor units, no float math
+    assert.equal(inc.cartValueMinor, 1500);
   });
 
   test('remove_from_cart increments removeFromCarts unconditionally', () => {

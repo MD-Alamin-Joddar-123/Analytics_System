@@ -2,10 +2,6 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { getBucket } from '../src/services/analytics/analyticsBucket.service.js';
 
-// Phase 8 §5/§30/§31: UTC bucket math, tested independent of any local
-// timezone the test runner happens to execute in — every assertion here
-// compares against explicit Date.UTC(...) values, never `new Date(...)`
-// constructed from a local-time string.
 
 describe('getBucket — hour granularity', () => {
   test('truncates to the start of the UTC hour', () => {
@@ -55,9 +51,6 @@ describe('getBucket — late events (§31)', () => {
 
   test('two events with different receivedAt but the same event timestamp land in the same bucket', () => {
     const eventTimestamp = new Date('2026-08-20T14:58:00.000Z');
-    // getBucket only ever takes ONE date argument (the event's own
-    // timestamp) — receivedAt is never passed to it. Simulating "received
-    // 5 minutes late" here just by NOT using a different value.
     const bucketA = getBucket(eventTimestamp, 'hour');
     const bucketB = getBucket(eventTimestamp, 'hour');
     assert.equal(bucketA.toISOString(), bucketB.toISOString());

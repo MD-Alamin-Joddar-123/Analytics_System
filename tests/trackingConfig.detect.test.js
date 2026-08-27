@@ -90,12 +90,9 @@ describe('POST /api/config/:websiteId/detect', () => {
     const body = await res.json();
 
     assert.equal(res.status, 200);
-    // No DOM-based id in this fixture, so this falls back to a
-    // parameterized URL pattern (see detectionEngine.js's detectProductId)
-    // rather than the bare wildcard — extraction needs a ":id" to work.
     assert.equal(body.data.product.productUrlPattern.value, '/products/:id');
     assert.ok(body.data.product.productNameSelector);
-    assert.deepEqual(body.data.order, {}); // orderUrl not supplied
+    assert.deepEqual(body.data.order, {});
   });
 
   test('orderCurrency is read from the page\'s own order total, agreeing with settings here', async (t) => {
@@ -206,19 +203,14 @@ describe('POST /api/config/:websiteId/detect', () => {
     const res = await post(pipeline.websiteId, { productUrl: 'https://shop.example.com/auth/login' }, pipeline.token);
     const body = await res.json();
 
-    assert.equal(res.status, 200); // a per-side classification failure never fails the whole request
+    assert.equal(res.status, 200);
     assert.deepEqual(body.data.product, {});
     assert.equal(body.data.productError.reason, 'login_required');
     assert.match(body.data.productError.message, /require login|sign-in page/i);
   });
 });
 
-// A product id only earns its keep if a VIEW and a PURCHASE file under the
-// same value. These cover the one place that can see both pages at once
-// and therefore the only place that can notice them disagreeing.
 describe('POST /api/config/:websiteId/detect — product identity is aligned across the two pages', () => {
-  // WooCommerce shape: the product page exposes an internal numeric id,
-  // while the order page identifies line items only by their product link.
   const WOO_PRODUCT = `<html><body>
     <nav>Home | Shop | About | Contact</nav>
     <h1 class="product_title">12-piece Tableware Set</h1>
@@ -262,9 +254,6 @@ describe('POST /api/config/:websiteId/detect — product identity is aligned acr
     }));
   }
 
-  // A distinct owner per test: detectRateLimiter keys on user id and its
-  // counter Map lives for the whole process, so tests sharing one owner
-  // burn a single 10-request budget between them.
   async function detectBoth(t, ownerId) {
     const pipeline = setupMockReportingPipeline(t, { currency: 'BDT', ownerId });
     serveBoth(t);
@@ -288,8 +277,6 @@ describe('POST /api/config/:websiteId/detect — product identity is aligned acr
 
   test('the product page is switched to URL ids, because the order page can only produce those', async (t) => {
     const data = await detectBoth(t, 'align-owner-2');
-    // Left alone, the product page would report data-product_id="191" —
-    // correct in isolation, and unjoinable with "/product/…" purchases.
     assert.equal(data.product.productIdSource.value, 'url');
     assert.equal(data.product.productIdSource.source, 'aligned-with-order-items');
     assert.equal(data.product.productIdSelector, undefined, 'the unused selector must not be saved');
@@ -330,8 +317,6 @@ describe('POST /api/config/:websiteId/detect — product identity is aligned acr
     );
     const { data } = await res.json();
 
-    // The real attribute is used, NOT the product link — so there is no
-    // scheme mismatch and the product page keeps its own DOM id.
     assert.equal(data.order.orderItemIdSelector.value, '[data-product-id]::attr(data-product-id)');
     assert.notEqual(data.order.orderItemIdSelector.source, 'product-link');
     assert.equal(data.product.productIdSource.value, 'selector', 'both pages can produce the DOM id — nothing to align');

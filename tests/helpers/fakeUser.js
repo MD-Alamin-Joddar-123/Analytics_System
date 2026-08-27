@@ -1,5 +1,3 @@
-// Test fixture only — not a real Mongoose document. The repository layer
-// is mocked in tests so the real User model/database is never touched.
 export function makeFakeUser(overrides = {}) {
   const now = new Date().toISOString();
   return {

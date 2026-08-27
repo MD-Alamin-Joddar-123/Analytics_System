@@ -51,7 +51,7 @@ describe('Checkout', () => {
     assert.equal(checkouts.size, 1);
     const checkout = checkouts.get(`${WEBSITE_ID}:chk-1`);
     assert.equal(checkout.status, 'started');
-    assert.equal(checkout.total, 1000); // defaults from cartValue, minor units
+    assert.equal(checkout.total, 1000);
   });
 
   test('the checkout is linked to its cartId', async (t) => {
@@ -104,9 +104,8 @@ describe('Checkout', () => {
     const pipeline = setupMockCommercePipeline(t);
     const { checkouts } = pipeline;
 
-    await post(pipeline, checkoutEvent()); // creates chk-1, status started
+    await post(pipeline, checkoutEvent());
 
-    // Purchase references a totally different, nonexistent checkoutId.
     await post(pipeline, {
       websiteId: WEBSITE_ID,
       event: 'purchase',
@@ -119,8 +118,8 @@ describe('Checkout', () => {
       },
     });
 
-    assert.equal(checkouts.get(`${WEBSITE_ID}:chk-1`).status, 'started'); // untouched
-    assert.equal(checkouts.has(`${WEBSITE_ID}:unrelated-checkout-id`), false); // never fabricated
+    assert.equal(checkouts.get(`${WEBSITE_ID}:chk-1`).status, 'started');
+    assert.equal(checkouts.has(`${WEBSITE_ID}:unrelated-checkout-id`), false);
   });
 
   test('a purchase with no checkoutId at all does not touch any checkout', async (t) => {

@@ -49,13 +49,6 @@ async function getCurrentUser(userId) {
   return toSafeUser(user);
 }
 
-// JWT access tokens are stateless and cannot be invalidated server-side
-// without a revocation store (denylist/rotation), which is intentionally
-// out of scope for Phase 2. Logout is a client-side operation: the caller
-// must discard the token. This endpoint exists so the client has a
-// well-defined place to call, and so a revocation store can be introduced
-// later (e.g. tracking a `tokenVersion` on the user, or a short-lived
-// denylist keyed by JWT id) without changing the API contract.
 function logout() {
   return {
     message: 'Logged out. Discard the access token on the client — it remains cryptographically valid until it expires.',

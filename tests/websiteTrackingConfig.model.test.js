@@ -4,11 +4,6 @@ import { WebsiteTrackingConfig } from '../src/models/WebsiteTrackingConfig.js';
 import { DETECTION_MODES, PRODUCT_ID_SOURCES } from '../src/constants/trackingConfig.js';
 import { CURRENCY_CODES } from '../src/constants/currencies.js';
 
-// Same schema-introspection approach as tests/analyticsModels.test.js — a
-// Mongoose schema's declared indexes/validation rules are fully inspectable
-// without a live connection via Model.schema.indexes()/.path(), which is
-// real, meaningful verification of this model's contract, not a live-DB
-// integration test.
 
 function findUniqueIndex(model, fields) {
   return model.schema.indexes().find(([keys, options]) => {

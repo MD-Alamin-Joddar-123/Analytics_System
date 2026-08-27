@@ -1,4 +1,3 @@
-// ISO 4217 alphabetic currency codes (active currencies).
 export const CURRENCY_CODES = new Set([
   'AED', 'AFN', 'ALL', 'AMD', 'ANG', 'AOA', 'ARS', 'AUD', 'AWG', 'AZN',
   'BAM', 'BBD', 'BDT', 'BGN', 'BHD', 'BIF', 'BMD', 'BND', 'BOB', 'BRL',

@@ -11,9 +11,6 @@ router.use('/health', healthRoutes);
 router.use('/api/auth', authRoutes);
 router.use('/api/websites', websiteRoutes);
 router.use('/api/reports', reportingRoutes);
-// Authenticated PUT/POST only — the public GET counterpart is mounted
-// separately in app.js, before the app-wide CORS policy. See that mount
-// point's comment for why the split is necessary.
 router.use('/api/config', trackingConfigRoutes);
 
 export default router;

@@ -69,10 +69,10 @@ describe('GET /api/reports/:websiteId/products', () => {
     assert.equal(res.status, 200);
     assert.deepEqual(
       body.data.items.map((i) => i.productId),
-      ['p2', 'p1', 'p3'] // revenue desc: 200000, 50000, 10000
+      ['p2', 'p1', 'p3']
     );
     assert.equal(body.data.items[0].productName, 'Gadget');
-    assert.equal(body.data.items[0].revenue, 2000); // major units
+    assert.equal(body.data.items[0].revenue, 2000);
     for (const item of body.data.items) {
       assert.equal(Object.prototype.hasOwnProperty.call(item, '_id'), false);
       assert.equal(Object.prototype.hasOwnProperty.call(item, 'id'), false);
@@ -91,7 +91,7 @@ describe('GET /api/reports/:websiteId/products', () => {
 
     assert.deepEqual(
       body.data.items.map((i) => i.productId),
-      ['p3', 'p1', 'p2'] // views asc: 50, 100, 300
+      ['p3', 'p1', 'p2']
     );
   });
 
@@ -104,12 +104,10 @@ describe('GET /api/reports/:websiteId/products', () => {
       ['addToCart', 'p2'],
       ['purchaseQuantity', 'p2'],
     ]) {
-      // eslint-disable-next-line no-await-in-loop
       const res = await get(
         `/api/reports/${pipeline.websiteId}/products?from=2026-08-01T00:00:00.000Z&to=2026-08-20T00:00:00.000Z&sort=${sortKey}`,
         pipeline.token
       );
-      // eslint-disable-next-line no-await-in-loop
       const body = await res.json();
       assert.equal(body.data.items[0].productId, expectedTopId, `sort=${sortKey}`);
     }
@@ -138,7 +136,7 @@ describe('GET /api/reports/:websiteId/products', () => {
     );
     const body = await res.json();
 
-    assert.equal(body.data.items.length, 1); // 3 total, page 2 of size 2 -> 1 remaining
+    assert.equal(body.data.items.length, 1);
     assert.deepEqual(body.data.pagination, { page: 2, limit: 2, total: 3, totalPages: 2 });
   });
 
@@ -159,7 +157,6 @@ describe('GET /api/reports/:websiteId/products', () => {
     const pipeline = setupMockReportingPipeline(t);
 
     for (const page of ['0', '-1', '1.5', 'abc']) {
-      // eslint-disable-next-line no-await-in-loop
       const res = await get(
         `/api/reports/${pipeline.websiteId}/products?from=2026-08-01T00:00:00.000Z&to=2026-08-20T00:00:00.000Z&page=${page}`,
         pipeline.token
@@ -212,7 +209,7 @@ describe('GET /api/reports/:websiteId/products/:productId', () => {
     assert.equal(body.data.purchaseQuantity, 8);
     assert.equal(body.data.orders, 6);
     assert.equal(body.data.revenue, 800);
-    assert.equal(body.data.checkoutQuantity, null); // not tracked per-product by Phase 8 — documented, not fabricated
+    assert.equal(body.data.checkoutQuantity, null);
     assert.equal(typeof body.data.conversionRates.viewToCartRate, 'number');
     assert.equal(Number.isFinite(body.data.conversionRates.viewToCartRate), true);
   });

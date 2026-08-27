@@ -45,11 +45,9 @@ describe('POST /api/auth/register', () => {
     assert.equal(typeof body.data.token, 'string');
     assert.equal(body.data.token.split('.').length, 3);
 
-    // passwordHash must never appear anywhere in the response
     assert.equal(body.data.user.passwordHash, undefined);
     assert.ok(!raw.includes('passwordHash'));
 
-    // the password actually got hashed before being persisted
     assert.notEqual(capturedPasswordHash, 'secure-password');
     assert.ok(await verifyPassword('secure-password', capturedPasswordHash));
   });

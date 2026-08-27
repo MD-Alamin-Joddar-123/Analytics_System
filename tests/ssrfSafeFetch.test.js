@@ -3,14 +3,6 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { fetchHtmlSafely } from '../src/utils/ssrfSafeFetch.js';
 
-// A real local server so the "happy path" fetch mechanics (connect,
-// redirect-follow, byte cap, content-type check) are proven against actual
-// bytes on the wire, not just mocked. It's bound to 127.0.0.1 — normally
-// blocked by design — so every test here passes an `isBlocked` override
-// that allows loopback through, isolating "does the fetch mechanism work"
-// from "does the blocklist work" (already covered in full by
-// privateNetwork.test.js and the dedicated blocking tests below, which
-// deliberately do NOT override isBlocked).
 const allowLoopback = () => false;
 
 let server;
@@ -99,7 +91,7 @@ describe('fetchHtmlSafely — happy path mechanics (against a real local server)
   });
 
   test('rejects when the server never responds within the timeout', async () => {
-    const slowServer = http.createServer(() => {}); // never responds
+    const slowServer = http.createServer(() => {});
     await new Promise((resolve) => slowServer.listen(0, '127.0.0.1', resolve));
     const slowUrl = `http://127.0.0.1:${slowServer.address().port}/`;
 
@@ -149,10 +141,6 @@ describe('fetchHtmlSafely — SSRF blocking (real production blocklist, no overr
   });
 
   test('rejects a redirect that leads into a blocked address, even though the first hop was fine', async () => {
-    // The first hop's own address is allowed via override (so it's reached
-    // at all), but the SECOND hop (what the redirect points at) is
-    // resolved with the REAL blocklist active, proving re-validation
-    // happens on every hop, not just the first.
     const redirectServer = http.createServer((req, res) => {
       res.writeHead(302, { Location: 'http://internal.example/secret' });
       res.end();

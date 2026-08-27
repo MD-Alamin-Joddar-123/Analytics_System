@@ -64,7 +64,6 @@ describe('GET /api/reports/:websiteId/visitors', () => {
   test('paginates and reports page/limit/total/totalPages', async (t) => {
     const pipeline = setupMockObservabilityPipeline(t);
     for (let i = 0; i < 3; i += 1) {
-      // eslint-disable-next-line no-await-in-loop
       await postAndProcess(baseUrl, pageView({ anonymousId: `anon-${i}`, sessionId: `sess-${i}` }), pipeline);
     }
 

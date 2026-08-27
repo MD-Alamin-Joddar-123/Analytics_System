@@ -75,7 +75,7 @@ describe('POST /api/collect — timestamp handling', () => {
   });
 
   test('rejects a timestamp too far in the future (clock-skew protection)', async (t) => {
-    const farFuture = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // +1 day
+    const farFuture = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     const { res, body } = await collect({ websiteId: WEBSITE_ID, event: 'page_view', timestamp: farFuture }, t);
 
     assert.equal(res.status, 400);
@@ -83,7 +83,7 @@ describe('POST /api/collect — timestamp handling', () => {
   });
 
   test('allows a small amount of future clock skew (within tolerance)', async (t) => {
-    const slightlyAhead = new Date(Date.now() + 60 * 1000).toISOString(); // +1 minute
+    const slightlyAhead = new Date(Date.now() + 60 * 1000).toISOString();
     const { res } = await collect({ websiteId: WEBSITE_ID, event: 'page_view', timestamp: slightlyAhead }, t);
 
     assert.equal(res.status, 202);

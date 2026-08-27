@@ -7,7 +7,6 @@ export const ErrorCodes = Object.freeze({
   FORBIDDEN: 'FORBIDDEN',
   CONFLICT: 'CONFLICT',
   SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
-  // Auth (Phase 2)
   AUTH_REQUIRED: 'AUTH_REQUIRED',
   INVALID_TOKEN: 'INVALID_TOKEN',
   TOKEN_EXPIRED: 'TOKEN_EXPIRED',
@@ -15,7 +14,6 @@ export const ErrorCodes = Object.freeze({
   USER_NOT_FOUND: 'USER_NOT_FOUND',
   EMAIL_ALREADY_EXISTS: 'EMAIL_ALREADY_EXISTS',
   ACCOUNT_SUSPENDED: 'ACCOUNT_SUSPENDED',
-  // Website (Phase 3)
   WEBSITE_NOT_FOUND: 'WEBSITE_NOT_FOUND',
   WEBSITE_ACCESS_DENIED: 'WEBSITE_ACCESS_DENIED',
   INVALID_WEBSITE_ID: 'INVALID_WEBSITE_ID',
@@ -23,7 +21,6 @@ export const ErrorCodes = Object.freeze({
   INVALID_DOMAIN: 'INVALID_DOMAIN',
   INVALID_WEBSITE_STATUS: 'INVALID_WEBSITE_STATUS',
   WEBSITE_ARCHIVED: 'WEBSITE_ARCHIVED',
-  // Event collection (Phase 4)
   UNSUPPORTED_EVENT: 'UNSUPPORTED_EVENT',
   INVALID_EVENT_DATA: 'INVALID_EVENT_DATA',
   INVALID_TIMESTAMP: 'INVALID_TIMESTAMP',
@@ -31,16 +28,13 @@ export const ErrorCodes = Object.freeze({
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   WEBSITE_PAUSED: 'WEBSITE_PAUSED',
   RATE_LIMITED: 'RATE_LIMITED',
-  // Queue / worker (Phase 7)
   QUEUE_UNAVAILABLE: 'QUEUE_UNAVAILABLE',
-  // Reporting API (Phase 9)
   INVALID_DATE_RANGE: 'INVALID_DATE_RANGE',
   INVALID_GRANULARITY: 'INVALID_GRANULARITY',
   INVALID_PAGINATION: 'INVALID_PAGINATION',
   INVALID_SORT: 'INVALID_SORT',
   INVALID_PRODUCT_ID: 'INVALID_PRODUCT_ID',
   PRODUCT_NOT_FOUND: 'PRODUCT_NOT_FOUND',
-  // Tracking Observability (Phase 12.5)
   INVALID_VISITOR_ID: 'INVALID_VISITOR_ID',
   VISITOR_NOT_FOUND: 'VISITOR_NOT_FOUND',
   INVALID_SESSION_ID: 'INVALID_SESSION_ID',
@@ -49,10 +43,7 @@ export const ErrorCodes = Object.freeze({
   INVALID_ORDER_ID: 'INVALID_ORDER_ID',
   ORDER_NOT_FOUND: 'ORDER_NOT_FOUND',
   INVALID_EVENT_TYPE_FILTER: 'INVALID_EVENT_TYPE_FILTER',
-  // Tracking config (dashboard-driven, zero-template-change detection)
   TRACKING_CONFIG_NOT_FOUND: 'TRACKING_CONFIG_NOT_FOUND',
-  // Tracking config Auto Detect (server-side URL fetch + heuristic
-  // selector detection)
   DETECT_NO_URL_PROVIDED: 'DETECT_NO_URL_PROVIDED',
   DETECT_INVALID_URL: 'DETECT_INVALID_URL',
   DETECT_URL_BLOCKED: 'DETECT_URL_BLOCKED',
@@ -62,13 +53,5 @@ export const ErrorCodes = Object.freeze({
   DETECT_TOO_MANY_REDIRECTS: 'DETECT_TOO_MANY_REDIRECTS',
   DETECT_UNSUPPORTED_CONTENT_TYPE: 'DETECT_UNSUPPORTED_CONTENT_TYPE',
   DETECT_BOTH_URLS_FAILED: 'DETECT_BOTH_URLS_FAILED',
-  // This one IS a real ApiError code (validateDetectBody rejects the
-  // request outright, before any fetch) — unlike the page-CONTENT
-  // classification reasons ('listing_page'/'login_required'/
-  // 'js_rendered_empty'/'order_signals_missing'), which never become an
-  // HTTP-level error at all: detectOneSide (trackingConfigDetection.service.js)
-  // converts those into a plain `{ reason, message }` object embedded in a
-  // normal 200 response (productError/orderError), by design, since a
-  // classification failure on ONE side must never fail the whole request.
   DETECT_PRODUCT_URL_LOOKS_LIKE_LISTING: 'DETECT_PRODUCT_URL_LOOKS_LIKE_LISTING',
 });

@@ -31,12 +31,6 @@ function post(body) {
 }
 
 describe('Concurrency', () => {
-  // Phase 7: ingestion (POST /api/collect) no longer touches
-  // Visitor/Session at all — that happens when the worker processes the
-  // job. So the race that matters now is two concurrent processEvent()
-  // calls, not two concurrent POSTs — these tests ingest both events
-  // first (fast, independent), then process both jobs concurrently to
-  // actually exercise the race in visitorService/sessionService.
 
   test('two near-simultaneous processing runs for the same new anonymousId create exactly one visitor', async (t) => {
     const pipeline = setupMockPipeline(t);
@@ -103,10 +97,6 @@ describe('Duplicate events do not double-count', () => {
     assert.equal(firstRes.status, 202);
     assert.equal(firstBody.data.duplicate, undefined);
 
-    // The resubmission is ingestion-level duplicate handling (§15): no
-    // second Event is created, but the existing job is re-enqueued —
-    // "processing" it again just hits processEvent's own
-    // already-completed guard (§11), a safe no-op.
     const { res: secondRes, body: secondBody, processingResult } = await postAndProcess(baseUrl, payload, pipeline);
     assert.equal(secondRes.status, 200);
     assert.equal(secondBody.data.duplicate, true);
@@ -122,12 +112,6 @@ describe('Duplicate events do not double-count', () => {
   });
 
   test('a duplicate event does not create a duplicate visitor or session even for a brand-new identity', async (t) => {
-    // A duplicate whose visitor/session were never seen before (e.g. the
-    // very first request for this identity already succeeded and this is
-    // purely a network-level retry of the identical request). This tests
-    // INGESTION alone — the point is that ingestion never touches
-    // Visitor/Session regardless of the pre-existing event's identity, so
-    // deliberately does not simulate the worker running afterward.
     const pipeline = setupMockPipeline(t);
     const { visitors, sessions, events } = pipeline;
     events.set(`${WEBSITE_ID}:already-seen`, {
@@ -148,7 +132,6 @@ describe('Duplicate events do not double-count', () => {
 
     assert.equal(res.status, 200);
     assert.equal(body.data.duplicate, true);
-    // The duplicate short-circuits before touching visitor/session at all.
     assert.equal(visitors.size, 0);
     assert.equal(sessions.size, 0);
   });

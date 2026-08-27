@@ -35,9 +35,6 @@ function mockWebsiteExists(t, overrides = {}) {
   );
 }
 
-// Fake, plain-object stand-in for a WebsiteTrackingConfig Mongoose
-// document — same shape .toJSON() would produce, including the internal
-// `_id`/`ownerId`-equivalent fields that toSafeTrackingConfig must strip.
 function makeFakeConfig(overrides = {}) {
   const fields = {
     _id: '66a1f0c9e1a2b3c4d5e6f7a9',
@@ -100,17 +97,11 @@ describe('GET /api/config/:websiteId — public, no auth required', () => {
     t.mock.method(websiteTrackingConfigRepository, 'findByWebsiteId', async () => makeFakeConfig());
 
     const res = await get(WEBSITE_ID);
-    // Asserted against the configured value rather than a hardcoded number,
-    // so tuning TRACKING_CONFIG_CACHE_SECONDS doesn't require editing a
-    // test that is really about "a cache header is set at all".
     assert.equal(res.headers.get('cache-control'), `public, max-age=${env.trackingConfigCacheSeconds}`);
     assert.ok(res.headers.get('etag'));
   });
 
   test('the cache window is short enough that an admin editing config sees it take effect promptly', async () => {
-    // The window an admin waits through after saving before their own
-    // storefront reflects the change. At the original 300s that looked
-    // exactly like the save having silently failed.
     assert.ok(
       env.trackingConfigCacheSeconds > 0 && env.trackingConfigCacheSeconds <= 60,
       `expected a cache window of 1-60s, got ${env.trackingConfigCacheSeconds}`
@@ -175,8 +166,6 @@ describe('GET /api/config/:websiteId — public, no auth required', () => {
       headers: { 'Content-Type': 'application/json' },
       body: '{}',
     });
-    // 401 (auth required), NOT 404/405 — proves the early public router
-    // only claims GET and genuinely falls through to the real PUT handler.
     assert.equal(res.status, 401);
   });
 });

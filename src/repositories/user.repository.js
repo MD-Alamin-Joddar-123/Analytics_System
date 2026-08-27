@@ -1,8 +1,5 @@
 import { User } from '../models/User.js';
 
-// Exported as a plain object (rather than named exports) so individual
-// methods can be swapped/mocked at the boundary in tests without a live
-// database connection.
 export const userRepository = {
   async findByEmail(email, { withPasswordHash = false } = {}) {
     const query = User.findOne({ email });

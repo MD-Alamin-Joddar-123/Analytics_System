@@ -18,8 +18,6 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       unique: true,
     },
-    // select: false keeps this out of query results by default; the
-    // repository layer must explicitly request it (e.g. for login).
     passwordHash: {
       type: String,
       required: true,

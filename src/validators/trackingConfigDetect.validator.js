@@ -3,16 +3,6 @@ import { ErrorCodes } from '../constants/errorCodes.js';
 
 const MAX_URL_LENGTH = 2048;
 
-// A single top-level path segment that's a generic category/collection
-// word — "please paste ONE PRODUCT's URL" almost always means at least
-// two segments (a category/prefix + the item itself, e.g.
-// "/products/iphone-15"). Checked before ever fetching anything: no
-// point spending a network round trip (and the SSRF-fetch's own cost) on
-// a URL shape that's already a clear listing-page signal. A single-
-// segment slug that ISN'T one of these generic words (e.g.
-// "/iphone-15-pro-max") is left alone — plenty of real sites route a
-// single product that way, and rejecting on segment count alone would be
-// a false positive.
 const GENERIC_LISTING_WORDS = new Set([
   'products',
   'product',
@@ -29,15 +19,11 @@ const GENERIC_LISTING_WORDS = new Set([
 
 function looksLikeListingUrl(parsedUrl) {
   const segments = parsedUrl.pathname.split('/').filter(Boolean);
-  if (segments.length === 0) return true; // bare root — never a single product
+  if (segments.length === 0) return true;
   if (segments.length === 1 && GENERIC_LISTING_WORDS.has(segments[0].toLowerCase())) return true;
   return false;
 }
 
-// Syntax-only validation — "is this even a URL." The real SSRF defense
-// (is it safe to actually CONNECT to) lives entirely in
-// src/utils/ssrfSafeFetch.js, run later at fetch time; duplicating any of
-// that logic here would just be two places that could drift out of sync.
 function readOptionalUrl(body, field, { rejectListingShape = false } = {}) {
   const value = body[field];
   if (value === undefined || value === null || value === '') return undefined;

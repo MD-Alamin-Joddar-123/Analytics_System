@@ -23,10 +23,6 @@ function makeEvent(overrides = {}) {
   };
 }
 
-// Mirrors eventProcessing.service.js's emptyCommerceDescriptor() shape —
-// duplicated here deliberately as plain test fixture data (not calling
-// production code) so these tests exercise analyticsAggregationService in
-// isolation from the worker/commerce layer.
 function emptyCommerce(overrides = {}) {
   return {
     product: null,
@@ -65,11 +61,6 @@ describe('analyticsAggregationService.aggregateEvent — idempotency & retry saf
   });
 
   test('a failed aggregation releases the idempotency claim so a retry re-attempts it', async (t) => {
-    // mockAnalyticsRepositories sets up working defaults for every
-    // analytics repository (including the marker claim/release this test
-    // actually cares about); only incrementBucket is then overridden below
-    // to fail on the first call, so the marker's claim/release behavior
-    // under test is the REAL implementation's, not a second mock's.
     const analytics = mockAnalyticsRepositories(t);
     const event = makeEvent({ eventId: 'evt-retry' });
 
@@ -78,7 +69,7 @@ describe('analyticsAggregationService.aggregateEvent — idempotency & retry saf
     t.mock.method(analyticsRepository, 'incrementBucket', async (websiteId, granularity, bucket, currency, inc) => {
       callCount += 1;
       if (callCount === 1) {
-        throw new Error('simulated transient write failure'); // fails partway through the FIRST attempt
+        throw new Error('simulated transient write failure');
       }
       const key = `${websiteId}:${granularity}:${bucket.toISOString()}`;
       const doc = localBuckets.get(key) ?? { pageViews: 0 };
@@ -88,18 +79,14 @@ describe('analyticsAggregationService.aggregateEvent — idempotency & retry saf
     });
 
     await assert.rejects(() => analyticsAggregationService.aggregateEvent(event, { commerce: emptyCommerce() }));
-    assert.equal(analytics.processedEvents.has('w1:evt-retry'), false); // claim was released
+    assert.equal(analytics.processedEvents.has('w1:evt-retry'), false);
     assert.equal(analytics.releasedEvents.length, 1);
 
-    // Retry (e.g. a BullMQ redelivery of the same event): the claim was
-    // released, so this second attempt is allowed through and actually
-    // aggregates — proving release genuinely un-blocks the retry, not
-    // just that a fresh mock would trivially succeed.
     const retryResult = await analyticsAggregationService.aggregateEvent(event, { commerce: emptyCommerce() });
     assert.equal(retryResult.aggregated, true);
     assert.equal(analytics.processedEvents.has('w1:evt-retry'), true);
     const bucket = localBuckets.get(`w1:hour:${new Date('2026-08-20T15:00:00.000Z').toISOString()}`);
-    assert.equal(bucket.pageViews, 1); // only the second (successful) attempt ever wrote anything
+    assert.equal(bucket.pageViews, 1);
   });
 
   test('an aggregation failure propagates the original error (never swallowed, §27)', async (t) => {
@@ -118,7 +105,6 @@ describe('analyticsAggregationService.aggregateEvent — multi-tenant isolation 
     const bucketTs = new Date('2026-08-20T10:00:00.000Z');
 
     for (let i = 0; i < 3; i += 1) {
-      // eslint-disable-next-line no-await-in-loop
       await analyticsAggregationService.aggregateEvent(
         makeEvent({ websiteId: 'website-A', timestamp: bucketTs }),
         { commerce: emptyCommerce() }
@@ -219,8 +205,8 @@ describe('analyticsAggregationService.aggregateEvent — page metrics', () => {
     const day = analytics.buckets.get(bucketKey('w1', 'day', '2026-08-20T00:00:00.000Z'));
 
     assert.equal(hour9.uniqueVisitors, 1);
-    assert.equal(hour10.uniqueVisitors, 1); // new hour bucket, counted again
-    assert.equal(day.uniqueVisitors, 1); // same day bucket both times, counted once
+    assert.equal(hour10.uniqueVisitors, 1);
+    assert.equal(day.uniqueVisitors, 1);
   });
 
   test('uniqueSessions uses the resolved session\'s sessionId, falling back to the raw event.sessionId', async (t) => {
@@ -233,7 +219,7 @@ describe('analyticsAggregationService.aggregateEvent — page metrics', () => {
     );
     await analyticsAggregationService.aggregateEvent(
       makeEvent({ timestamp: ts, sessionId: 'raw-session-2' }),
-      { session: null, commerce: emptyCommerce() } // no resolved session -> falls back to event.sessionId
+      { session: null, commerce: emptyCommerce() }
     );
 
     const hourBucket = analytics.buckets.get(bucketKey('w1', 'hour', '2026-08-20T15:00:00.000Z'));
@@ -279,7 +265,7 @@ describe('analyticsAggregationService.aggregateEvent — product metrics', () =>
 
     const productBucket = analytics.productBuckets.get(`w1:p1:hour:${new Date('2026-08-20T15:00:00.000Z').toISOString()}`);
     assert.equal(productBucket.removeFromCarts, 1);
-    assert.equal(productBucket.productNameSnapshot, undefined); // no name available (§28) — never guessed
+    assert.equal(productBucket.productNameSnapshot, undefined);
   });
 
   test('a later event refreshes the CURRENT bucket\'s productNameSnapshot, never a past bucket\'s (§28)', async (t) => {
@@ -298,7 +284,7 @@ describe('analyticsAggregationService.aggregateEvent — product metrics', () =>
 
     const bucket1 = analytics.productBuckets.get(`w1:p1:hour:${hour1.toISOString()}`);
     const bucket2 = analytics.productBuckets.get(`w1:p1:hour:${hour2.toISOString()}`);
-    assert.equal(bucket1.productNameSnapshot, 'Old Name'); // untouched by the later rename
+    assert.equal(bucket1.productNameSnapshot, 'Old Name');
     assert.equal(bucket2.productNameSnapshot, 'New Name');
   });
 });
@@ -323,8 +309,6 @@ describe('analyticsAggregationService.aggregateEvent — cart metrics (§17, no 
     assert.equal(hourBucket.cartItems, 1);
     assert.equal(hourBucket.cartQuantity, 2);
     assert.equal(hourBucket.cartValueMinor, 2000);
-    // Cart activity must never leak into revenue counters (§17) — no
-    // purchase happened, so revenue stays exactly zero.
     assert.equal(hourBucket.grossRevenueMinor, 0);
     assert.equal(hourBucket.netRevenueMinor, 0);
   });
@@ -364,9 +348,6 @@ describe('analyticsAggregationService.aggregateEvent — checkout metrics & dupl
       makeEvent({ timestamp: ts, eventName: 'checkout', eventId: 'evt-checkout-1' }),
       { commerce: emptyCommerce({ isNewCheckout: true }) }
     );
-    // A second, DIFFERENT event referencing the same checkoutId — the
-    // commerce layer (checkout.service.js) already found it existing, so
-    // isNewCheckout is false here.
     await analyticsAggregationService.aggregateEvent(
       makeEvent({ timestamp: ts, eventName: 'checkout', eventId: 'evt-checkout-2' }),
       { commerce: emptyCommerce({ isNewCheckout: false }) }
@@ -395,10 +376,10 @@ describe('analyticsAggregationService.aggregateEvent — checkout metrics & dupl
       makeEvent({ timestamp: ts, eventName: 'purchase', eventId: 'evt-purchase-2' }),
       {
         commerce: emptyCommerce({
-          isNewOrder: false, // duplicate order webhook
+          isNewOrder: false,
           order: { total: 1000, refundedAmount: 0 },
           orderItems: [],
-          checkoutJustCompleted: false, // already completed by the first event
+          checkoutJustCompleted: false,
         }),
       }
     );
@@ -486,7 +467,7 @@ describe('analyticsAggregationService.aggregateEvent — currency snapshot (§29
 describe('analyticsAggregationService.aggregateEvent — late events (§31)', () => {
   test('an event processed long after it occurred still lands in the bucket matching its own timestamp', async (t) => {
     const analytics = mockAnalyticsRepositories(t);
-    const eventTimestamp = new Date('2020-03-14T14:58:00.000Z'); // occurred years "ago"
+    const eventTimestamp = new Date('2020-03-14T14:58:00.000Z');
     await analyticsAggregationService.aggregateEvent(
       makeEvent({ timestamp: eventTimestamp }),
       { commerce: emptyCommerce() }
@@ -495,7 +476,6 @@ describe('analyticsAggregationService.aggregateEvent — late events (§31)', ()
     const hourBucket = analytics.buckets.get(bucketKey('w1', 'hour', '2020-03-14T14:00:00.000Z'));
     assert.ok(hourBucket);
     assert.equal(hourBucket.pageViews, 1);
-    // And definitely NOT bucketed under "now".
     const todayBucketKey = bucketKey('w1', 'hour', new Date().toISOString().slice(0, 13) + ':00:00.000Z');
     assert.equal(analytics.buckets.has(todayBucketKey), false);
   });

@@ -24,12 +24,6 @@ const BASE_BUCKET_COUNTERS = {
   netRevenueMinor: 0,
 };
 
-// Mirrors src/repositories/analytics/analytics.repository.js's
-// SUMMABLE_COUNTER_FIELDS exactly (uniqueVisitors/uniqueSessions
-// deliberately excluded — see that file's comment: summing per-bucket
-// unique counts across a range would over-count a visitor/session active
-// in more than one bucket; true range-wide distinct counts come from
-// countDistinctInRange below instead).
 const SUMMABLE_BUCKET_FIELDS = Object.keys(BASE_BUCKET_COUNTERS).filter(
   (f) => f !== 'uniqueVisitors' && f !== 'uniqueSessions'
 );
@@ -51,41 +45,14 @@ function zeroed(fields) {
   return Object.fromEntries(fields.map((f) => [f, 0]));
 }
 
-// Full-fidelity in-memory mock of the ENTIRE Phase 8/9 analytics
-// repository layer — both the WRITE side (incrementBucket,
-// incrementProductBucket, claim, the idempotency marker — Phase 8) and
-// the READ side (sumBucketsInRange, findBucketsInRange,
-// countDistinctInRange, sumProductBucketsInRange, aggregateTopProducts —
-// Phase 9), all operating over ONE shared in-memory store. This is what
-// makes it possible to run a realistic event through the REAL aggregation
-// write path (analyticsAggregationService) and then query the REAL
-// reporting read path (reportingService) and see consistent numbers —
-// exactly the full-pipeline proof Phase 12's end-to-end test needs.
-//
-// tests/helpers/mockReportingPipeline.js remains separate and is still
-// used by Phase 9's own reporting tests, which deliberately seed exact
-// bucket values directly (skipping the write path entirely) to test
-// reporting math in isolation — a different, equally valid testing style
-// for a different purpose. Both coexist; neither replaces the other.
-//
-// Each mocked method does its read-modify-write in a single synchronous
-// block (no `await` between reading and writing the record) — this is
-// deliberate, not an accident of convenience: it's what makes a
-// Promise.all of many concurrent calls behave the same way a real MongoDB
-// atomic $inc would (§22/§23), since Node's single-threaded event loop
-// never interleaves two synchronous sections. A mock that used
-// find-then-await-then-save here would let concurrent calls race and lose
-// updates, which is exactly the bug this architecture (atomic
-// findOneAndUpdate + $inc) exists to prevent in production.
 export function mockAnalyticsRepositories(t) {
-  const buckets = new Map(); // `${websiteId}:${granularity}:${bucketISO}` -> bucket doc
-  const productBuckets = new Map(); // `${websiteId}:${productId}:${granularity}:${bucketISO}` -> doc
-  const visitorClaims = new Map(); // `${websiteId}:${granularity}:${bucketISO}:${anonymousId}` -> { websiteId, granularity, bucket, anonymousId }
-  const sessionClaims = new Map(); // `${websiteId}:${granularity}:${bucketISO}:${sessionId}` -> { websiteId, granularity, bucket, sessionId }
-  const processedEvents = new Set(); // `${websiteId}:${eventId}`
-  const releasedEvents = []; // every (websiteId, eventId) release() was called for, in order
+  const buckets = new Map();
+  const productBuckets = new Map();
+  const visitorClaims = new Map();
+  const sessionClaims = new Map();
+  const processedEvents = new Set();
+  const releasedEvents = [];
 
-  // --- Write side (Phase 8) ------------------------------------------------
 
   t.mock.method(analyticsRepository, 'incrementBucket', async (websiteId, granularity, bucket, currency, inc) => {
     const key = `${websiteId}:${granularity}:${bucket.toISOString()}`;
@@ -145,7 +112,6 @@ export function mockAnalyticsRepositories(t) {
     releasedEvents.push({ websiteId, eventId });
   });
 
-  // --- Read side (Phase 9) — same store as above ---------------------------
 
   t.mock.method(analyticsRepository, 'sumBucketsInRange', async (websiteId, granularity, from, to) => {
     const totals = zeroed(SUMMABLE_BUCKET_FIELDS);

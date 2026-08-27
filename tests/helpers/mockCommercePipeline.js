@@ -12,22 +12,15 @@ function nextId(prefix) {
   return `${prefix}-${idCounter}`;
 }
 
-// Builds on setupMockPipeline (website/event/visitor/session) and
-// replaces its lightweight commerce-repository pass-throughs with
-// realistic in-memory stores (including duplicate-key race simulation on
-// every create), so Phase 6 tests can drive multi-request commerce flows
-// end-to-end through the real HTTP → validator → controller → service
-// chain and inspect the resulting documents directly — same philosophy as
-// mockCollectPipeline.js's visitor/session stores.
 export function setupMockCommercePipeline(t, options = {}) {
   const base = setupMockPipeline(t, options);
 
-  const products = new Map(); // `${websiteId}:${externalProductId}` -> doc
-  const carts = new Map(); // `${websiteId}:${cartId}` -> doc
-  const cartItems = new Map(); // `${websiteId}:${cartId}:${externalProductId}` -> doc
-  const checkouts = new Map(); // `${websiteId}:${checkoutId}` -> doc
-  const orders = new Map(); // `${websiteId}:${externalOrderId}` -> doc
-  const orderItems = []; // flat list, mirrors OrderItem having no unique identity constraint
+  const products = new Map();
+  const carts = new Map();
+  const cartItems = new Map();
+  const checkouts = new Map();
+  const orders = new Map();
+  const orderItems = [];
 
   function duplicateKeyError() {
     const err = new Error('duplicate key');

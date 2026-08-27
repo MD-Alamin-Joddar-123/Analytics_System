@@ -2,9 +2,6 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createInMemoryRateLimiter } from '../src/middleware/rateLimiter.js';
 
-// These exercise the factory directly with tiny limits — not the
-// pre-built `collectRateLimiter` export, and not through HTTP — so the
-// test is fast, deterministic, and independent of env.isTest.
 
 function mockReqRes(overrides = {}) {
   const headers = {};

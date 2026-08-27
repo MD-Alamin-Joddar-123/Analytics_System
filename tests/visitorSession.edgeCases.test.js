@@ -59,8 +59,6 @@ describe('Missing identifiers', () => {
     assert.equal(visitors.size, 1);
     assert.equal(sessions.size, 1);
     const session = [...sessions.values()][0];
-    // Server-generated — a UUID, not empty/undefined, and not exposing an
-    // internal MongoDB id shape.
     assert.match(session.sessionId, /^[0-9a-f-]{36}$/);
   });
 
@@ -71,9 +69,6 @@ describe('Missing identifiers', () => {
     await post(pipeline, { websiteId: WEBSITE_ID, event: 'page_view', anonymousId: 'anon-x' });
     await post(pipeline, { websiteId: WEBSITE_ID, event: 'page_view', anonymousId: 'anon-x' });
 
-    // Without a client-persisted sessionId, the backend has no stable
-    // input to correlate the two events into one session — this is the
-    // documented, honest fallback (Phase 5 §21), not a bug.
     assert.equal(sessions.size, 2);
   });
 });
@@ -164,8 +159,6 @@ describe('Privacy', () => {
       userAgent: 'ignored-if-sent-in-body',
     });
 
-    // Sending an anonymousId is what creates the visitor — nothing else
-    // (userAgent header, etc.) is ever part of the lookup key.
     assert.equal(visitors.size, 1);
     assert.ok(visitors.has(`${WEBSITE_ID}:anon-1`));
   });

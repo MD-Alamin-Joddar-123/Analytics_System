@@ -10,23 +10,10 @@ import { logger } from '../utils/logger.js';
 
 const SHUTDOWN_TIMEOUT_MS = 30_000;
 
-// The worker gets its OWN Redis connection, separate from
-// config/redis.js's shared one (which is for the API process's queue
-// producer + health checks). This is both a process boundary (the worker
-// is meant to run as `node src/workers/event.worker.js`, a different OS
-// process from the API server — §19) and a BullMQ requirement: a Worker
-// issues blocking reads against Redis and should not share a connection
-// used for other, non-blocking purposes.
 function createWorkerRedisConnection() {
   return new Redis(env.redisUrl, getRedisConnectionOptions());
 }
 
-// Thin BullMQ adapter (§6): all actual business logic lives in
-// eventProcessingService, which has no BullMQ/Redis dependency of its own
-// and is unit-testable in isolation. This function only translates a
-// BullMQ job into a call to that service and structures the resulting
-// logs — it makes no database queries and no service-layer decisions
-// itself.
 export function createEventWorker() {
   const connection = createWorkerRedisConnection();
 
@@ -88,9 +75,6 @@ async function start() {
     shuttingDown = true;
     logger.info('Worker shutdown signal received', { signal });
 
-    // §18: stop accepting new jobs, let active ones finish where
-    // practical — but don't wait forever. worker.close() resolves once
-    // in-flight jobs complete; force-close if that takes too long.
     const closed = await Promise.race([
       worker.close().then(() => true),
       new Promise((resolve) => setTimeout(() => resolve(false), SHUTDOWN_TIMEOUT_MS)),
@@ -121,10 +105,6 @@ async function start() {
   });
 }
 
-// Only run when executed directly (`node src/workers/event.worker.js` /
-// `npm run worker`), never when imported by tests (§20: worker startup is
-// explicit, never silently started as a side effect of importing this
-// module from the API process or a test file).
 const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMainModule) {
   start();

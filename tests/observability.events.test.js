@@ -157,7 +157,6 @@ describe('GET /api/reports/:websiteId/events', () => {
   test('paginates', async (t) => {
     const pipeline = setupMockObservabilityPipeline(t);
     for (let i = 0; i < 3; i += 1) {
-      // eslint-disable-next-line no-await-in-loop
       await postAndProcess(baseUrl, pageView({ path: `/p${i}` }), pipeline);
     }
     const res = await get(`/api/reports/${pipeline.websiteId}/events?page=2&limit=2`, pipeline.token);

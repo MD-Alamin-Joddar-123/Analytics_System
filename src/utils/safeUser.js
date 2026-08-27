@@ -1,6 +1,3 @@
-// Defense-in-depth transform: even though passwordHash is `select: false`
-// on the schema and stripped by the model's toJSON transform, this ensures
-// no code path can accidentally leak it in an API response.
 export function toSafeUser(user) {
   if (!user) return null;
 

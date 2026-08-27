@@ -10,17 +10,7 @@ import { ErrorCodes } from '../../constants/errorCodes.js';
 import { sessionRepository } from '../../repositories/session.repository.js';
 import { summarizeTrafficSources, buildTrafficSourceSeries } from '../../utils/trafficSource.js';
 
-// Phase 9 — the reporting layer. Every function here READS the Phase 8
-// aggregation collections (AnalyticsBucket/ProductAnalyticsBucket/
-// AnalyticsVisitorBucket/AnalyticsSessionBucket) and shapes them into
-// dashboard-friendly responses. Nothing here queries Event, nothing here
-// recomputes what Phase 8 already computed — see
-// docs/REPORTING_API_ARCHITECTURE.md §"No raw event recomputation" (§17).
 
-// fromMinorUnits(0) is 0, a normal number — this wrapper only exists so a
-// theoretically non-finite/undefined input (defensive; sumBucketsInRange
-// always returns real numbers) can never leak a `NaN`/`undefined` into a
-// response (§1: "Never return NaN or Infinity").
 function toMoney(minorAmount) {
   const value = fromMinorUnits(minorAmount);
   return Number.isFinite(value) ? value : 0;
@@ -30,7 +20,6 @@ function serializeRange({ from, to, granularity }) {
   return { from: from.toISOString(), to: to.toISOString(), granularity };
 }
 
-// --- 1. Overview ------------------------------------------------------
 
 async function getOverview(website, query) {
   const { from, to, granularity } = query;
@@ -38,9 +27,6 @@ async function getOverview(website, query) {
 
   const [totals, uniqueVisitors, uniqueSessions] = await Promise.all([
     analyticsRepository.sumBucketsInRange(websiteId, granularity, from, to),
-    // TRUE distinct counts across the range, not a sum of per-bucket
-    // uniques — see analytics.repository.js's SUMMABLE_COUNTER_FIELDS
-    // comment for why summing would over-count.
     visitorAnalyticsRepository.countDistinctInRange(websiteId, granularity, from, to),
     sessionAnalyticsRepository.countDistinctInRange(websiteId, granularity, from, to),
   ]);
@@ -68,25 +54,15 @@ async function getOverview(website, query) {
     netRevenue: toMoney(totals.netRevenueMinor),
     uniqueVisitors,
     uniqueSessions,
-    // Phase 8 ANALYTICS_ARCHITECTURE.md §12 calls this visitorConversionRate;
-    // Phase 9 §5's own example ("purchase conversion = orders /
-    // uniqueVisitors") names the identical formula — same calculation,
-    // exposed under the single `conversionRate` field §1 asks for. The full
-    // three-way breakdown (visitor/session/purchase) is available on the
-    // Conversion report (§5) for callers that want it.
     conversionRate: visitorConversionRate,
   };
 }
 
-// --- 2. Time-series -----------------------------------------------------
 
 async function getTimeSeries(website, query) {
   const { from, to, granularity } = query;
   const buckets = await analyticsRepository.findBucketsInRange(website.websiteId, granularity, from, to);
 
-  // Each document IS one point already (§2: "Use the already aggregated
-  // AnalyticsBucket documents") — this only formats field names/units for
-  // the response, it never sums or recomputes anything across points.
   const points = buckets.map((bucket) => ({
     date: bucket.bucket.toISOString(),
     pageViews: bucket.pageViews,
@@ -107,7 +83,6 @@ async function getTimeSeries(website, query) {
   return { granularity, range: { from: from.toISOString(), to: to.toISOString() }, currency: website.currency, points };
 }
 
-// --- 3. Product analytics (top products / list) -------------------------
 
 async function getTopProducts(website, query, sort, pagination) {
   const { from, to, granularity } = query;
@@ -122,11 +97,6 @@ async function getTopProducts(website, query, sort, pagination) {
   });
 
   const formattedItems = items.map((item) => ({
-    // The external product id — item._id here is the $group key, which was
-    // grouped by `$productId` (the external id), never Mongo's own _id
-    // (§3: "Never expose MongoDB internal _id as the public product
-    // identifier" — nothing in this pipeline ever touches ProductAnalyticsBucket's
-    // own document _id in the first place).
     productId: item._id,
     productName: item.productName ?? null,
     views: item.productViews,
@@ -150,7 +120,6 @@ async function getTopProducts(website, query, sort, pagination) {
   };
 }
 
-// --- 4. Product detail ----------------------------------------------------
 
 async function getProductDetail(website, productId, query) {
   const { from, to, granularity } = query;
@@ -166,15 +135,10 @@ async function getProductDetail(website, productId, query) {
 
   let productName = totals.productName ?? null;
   if (!productName) {
-    // No name observed within the requested range — fall back to the live,
-    // normalized Product document (Phase 6, reused directly, not
-    // re-derived from anything).
     const product = await productRepository.findByWebsiteAndExternalId(websiteId, productId);
     if (product) {
       productName = product.name ?? null;
     } else if (!hasActivity) {
-      // Neither analytics activity in range NOR a known Product at all —
-      // this id is unknown to this website's catalog entirely.
       throw ApiError.notFound('Product not found.', ErrorCodes.PRODUCT_NOT_FOUND);
     }
   }
@@ -187,29 +151,17 @@ async function getProductDetail(website, productId, query) {
     views: totals.productViews,
     addToCart: totals.addToCarts,
     removeFromCart: totals.removeFromCarts,
-    // Phase 8's ProductAnalyticsBucket does not track a per-product
-    // checkout-line quantity (only website-level checkoutStarted/
-    // checkoutCompleted exist — see docs/DATABASE_ARCHITECTURE.md's Phase 8
-    // section). Rather than fabricate this from raw Events (explicitly
-    // forbidden, §17) or silently omit the field, it is returned as `null`
-    // with this documented reason — see
-    // docs/REPORTING_API_ARCHITECTURE.md's Product Detail section.
     checkoutQuantity: null,
     purchaseQuantity: totals.unitsSold,
     orders: totals.orders,
     revenue: toMoney(totals.revenueMinor),
     conversionRates: {
-      // Phase 9 additions (per-product funnel rates Phase 8 never defined
-      // at all — not a redefinition of any Phase 8 formula): how often a
-      // view led to an add-to-cart, and how often an add-to-cart led to an
-      // order line for this specific product.
       viewToCartRate: calculateRate(totals.addToCarts, totals.productViews),
       cartToOrderRate: calculateRate(totals.orders, totals.addToCarts),
     },
   };
 }
 
-// --- 5. Conversion report -------------------------------------------------
 
 async function getConversionReport(website, query) {
   const { from, to, granularity } = query;
@@ -239,11 +191,7 @@ async function getConversionReport(website, query) {
     uniqueVisitors,
     uniqueSessions,
     conversionRates: {
-      // Phase 9 addition (funnel entry point, not a Phase 8 formula):
-      // product_view -> add_to_cart rate.
       addToCartRate: calculateRate(totals.addToCarts, totals.productViews),
-      // The three Phase 8 ANALYTICS_ARCHITECTURE.md §12 formulas, reused
-      // verbatim — see calculateConversionRates' own doc comment.
       visitorConversionRate: rates.visitorConversionRate,
       sessionConversionRate: rates.sessionConversionRate,
       purchaseConversionRate: rates.purchaseConversionRate,
@@ -251,16 +199,7 @@ async function getConversionReport(website, query) {
   };
 }
 
-// --- 6. Cart / checkout report ---------------------------------------------
 
-// Where the sessions in this range CAME FROM. Reads the Session
-// collection directly rather than an analytics bucket: referrer is
-// unbounded free text, so there is no fixed set of counters it could ever
-// have been pre-aggregated into, and the same reason observability's
-// visitor/session reports query their collections directly.
-// How many distinct sources get their own line. Beyond a handful the
-// chart stops being readable and every extra line is a source with one or
-// two sessions; the rest are summed into "Other" so nothing is lost.
 const MAX_TRAFFIC_SOURCE_SERIES = 5;
 
 async function getTrafficSourcesReport(website, query) {
@@ -275,8 +214,6 @@ async function getTrafficSourcesReport(website, query) {
     website.domain
   );
 
-  // The chart plots the same sources the list ranks, so the two always
-  // agree about what the biggest source is.
   const topSources = sources.slice(0, MAX_TRAFFIC_SOURCE_SERIES).map((row) => row.source);
   const { points, keys } = buildTrafficSourceSeries(
     bucketGroups.map((row) => ({ bucket: row._id.bucket, referrer: row._id.referrer, sessions: row.sessions })),
@@ -290,7 +227,6 @@ async function getTrafficSourcesReport(website, query) {
     totalSessions: sources.reduce((sum, row) => sum + row.sessions, 0),
     sources,
     points,
-    // Ordered by overall size, so the legend and the list read the same way.
     series: keys.sort((a, b) => topSources.indexOf(a) - topSources.indexOf(b)),
   };
 }
@@ -307,32 +243,21 @@ async function getCartCheckoutReport(website, query) {
     cartsCreated: totals.cartsCreated,
     cartItems: totals.cartItems,
     cartQuantity: totals.cartQuantity,
-    // Cumulative add-to-cart ACTIVITY value, explicitly NOT revenue (Phase 8
-    // ANALYTICS_ARCHITECTURE.md §10) — never combined with grossRevenue/
-    // netRevenue in any calculation here.
     cartValue: toMoney(totals.cartValueMinor),
     checkoutStarted: totals.checkoutStarted,
     checkoutCompleted: totals.checkoutCompleted,
     conversionRates: {
-      // Phase 9 addition: how many created carts progressed to a started
-      // checkout.
       cartToCheckoutRate: calculateRate(totals.checkoutStarted, totals.cartsCreated),
-      // == Phase 8's purchaseConversionRate (checkoutCompleted /
-      // checkoutStarted) — same formula, reused, not reinvented.
       checkoutCompletionRate: calculateRate(totals.checkoutCompleted, totals.checkoutStarted),
     },
   };
 }
 
-// --- 7. Revenue report ------------------------------------------------------
 
 async function getRevenueReport(website, query) {
   const { from, to, granularity } = query;
   const totals = await analyticsRepository.sumBucketsInRange(website.websiteId, granularity, from, to);
 
-  // Average computed on the integer minor-unit total first (no
-  // accumulation, a single division), converted to major units once at
-  // the very end — never floating-point-accumulated money (§16).
   const averageOrderValueMinor = calculateAverage(totals.grossRevenueMinor, totals.orders);
 
   return {

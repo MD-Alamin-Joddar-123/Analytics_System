@@ -70,8 +70,6 @@ describe('Visitor resolution', () => {
   test('the same anonymousId on two different websites creates two different visitors', async (t) => {
     const pipeline = setupMockPipeline(t, { websiteId: WEBSITE_A });
     const { visitors } = pipeline;
-    // Second pipeline setup would overwrite mocks; instead mock both
-    // websites directly via a combined setup.
     const { websiteRepository } = await import('../src/repositories/website.repository.js');
     const { makeFakeWebsite } = await import('./helpers/fakeWebsite.js');
     t.mock.method(websiteRepository, 'findByWebsiteId', async (id) =>
@@ -167,7 +165,7 @@ describe('Session resolution', () => {
     assert.equal(sessions.size, 1);
     const session = sessions.get(`${WEBSITE_A}:sess-1`);
     assert.equal(session.eventCount, 2);
-    assert.equal(session.pageViewCount, 1); // add_to_cart doesn't increment it
+    assert.equal(session.pageViewCount, 1);
   });
 
   test('pageViewCount increments only for page_view; eventCount increments for every event', async (t) => {
@@ -205,7 +203,7 @@ describe('Session resolution', () => {
 
     const session = sessions.get(`${WEBSITE_A}:s`);
     assert.equal(session.landingPage, '/page-1');
-    assert.equal(session.exitPage, '/page-2'); // unchanged by the trailing add_to_cart
+    assert.equal(session.exitPage, '/page-2');
   });
 
   test('a session belongs to the correct visitor', async (t) => {
@@ -251,11 +249,8 @@ describe('Event → visitor/session integration', () => {
     const session = sessions.get(`${WEBSITE_A}:sess-1`);
     const eventDoc = [...events.values()][0];
 
-    // raw client-supplied identifiers are preserved unmodified...
     assert.equal(eventDoc.anonymousId, 'anon-1');
     assert.equal(eventDoc.sessionId, 'sess-1');
-    // ...and are absent at creation time, only appearing once processing
-    // (the worker) resolves and links them — the defining Phase 7 change.
     assert.equal(String(eventDoc.visitorId), String(visitor._id));
     assert.equal(String(eventDoc.sessionObjectId), String(session._id));
     assert.equal(eventDoc.processingStatus, 'completed');

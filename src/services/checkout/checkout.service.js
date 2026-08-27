@@ -1,13 +1,5 @@
 import { checkoutRepository } from '../../repositories/checkout.repository.js';
 
-// Creates or refreshes a Checkout from a `checkout` event. Financial
-// fields are last-write-wins (only the fields this particular event
-// actually provided are updated) — a checkout event resent with more
-// complete totals than an earlier one simply fills them in.
-// Returns { checkout, isNew } — isNew is Phase 8's checkoutStarted
-// analytics counter's source of truth (reusing this create-vs-found
-// decision, not a second idempotency system — see cart.service.js's
-// resolveCart for the same pattern applied to carts).
 async function upsertCheckout(websiteId, data, context) {
   const { checkoutId } = data;
   if (!checkoutId) {
@@ -56,17 +48,6 @@ async function upsertCheckout(websiteId, data, context) {
   }
 }
 
-// Called from a `purchase` event that supplied a checkoutId (§25). Only
-// links/completes when that checkoutId actually resolves to a known
-// Checkout — a purchase with an unrelated or missing checkoutId never
-// marks any checkout completed. Idempotent: completing an
-// already-completed checkout is a no-op, not an error.
-// Returns { checkout, justCompleted } — justCompleted is true ONLY on the
-// call that actually transitions status started -> completed (Phase 8's
-// checkoutCompleted analytics counter's source of truth). A duplicate
-// purchase event for an already-completed checkout, or one with no linked
-// checkout, both report justCompleted: false, so analytics never double-
-// counts a checkout completion.
 async function completeCheckoutIfLinked(websiteId, checkoutId, completedAt) {
   if (!checkoutId) {
     return { checkout: null, justCompleted: false };

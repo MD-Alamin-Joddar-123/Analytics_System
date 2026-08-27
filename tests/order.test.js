@@ -50,7 +50,7 @@ describe('Order / OrderItem — purchase', () => {
     assert.equal(res.status, 202);
     assert.equal(orders.size, 1);
     const order = orders.get(`${WEBSITE_ID}:order-1`);
-    assert.equal(order.total, 85000); // 850 BDT -> integer minor units
+    assert.equal(order.total, 85000);
     assert.equal(Number.isInteger(order.total), true);
     assert.equal(order.currency, 'BDT');
   });
@@ -72,17 +72,15 @@ describe('Order / OrderItem — purchase', () => {
     const pipeline = setupMockCommercePipeline(t);
     const { orders, orderItems, products } = pipeline;
 
-    // Product already exists, priced at 1000 (current price) today...
     await post(pipeline, { websiteId: WEBSITE_ID, event: 'product_view', data: { productId: 'p1', price: 1000, currency: 'BDT' } });
     assert.equal(products.get(`${WEBSITE_ID}:p1`).price, 100000);
 
-    // ...but this historical order was placed at 850.
     await post(pipeline, purchaseEvent({ items: [{ productId: 'p1', name: 'Laptop', price: 850, quantity: 1 }] }));
 
     const order = orders.get(`${WEBSITE_ID}:order-1`);
     const items = orderItems.filter((oi) => String(oi.orderId) === String(order._id));
     assert.equal(items.length, 1);
-    assert.equal(items[0].unitPrice, 85000); // 850, NOT today's 1000
+    assert.equal(items[0].unitPrice, 85000);
     assert.equal(items[0].quantity, 1);
     assert.equal(items[0].subtotal, 85000);
   });
@@ -117,16 +115,11 @@ describe('Order idempotency (websiteId + externalOrderId)', () => {
     const pipeline = setupMockCommercePipeline(t);
     const { orders } = pipeline;
 
-    // Simulates two distinct webhook deliveries for the same order — e.g.
-    // a "pending" notification followed by a "paid" one — with different
-    // eventIds, which Phase 4/5's event-level idempotency alone would NOT
-    // catch (different eventId each time). Order-level idempotency (§12)
-    // is what prevents a second Order document here.
     await post(pipeline, purchaseEvent({ orderId: 'order-evolving' }));
     const { res: res2 } = await post(pipeline, purchaseEvent({ orderId: 'order-evolving', paymentStatus: 'paid' }));
 
-    assert.equal(res2.status, 202); // a genuinely new event, accepted
-    assert.equal(orders.size, 1); // but still exactly one order
+    assert.equal(res2.status, 202);
+    assert.equal(orders.size, 1);
     assert.equal(orders.get(`${WEBSITE_ID}:order-evolving`).paymentStatus, 'paid');
   });
 
@@ -138,8 +131,6 @@ describe('Order idempotency (websiteId + externalOrderId)', () => {
     await post(pipeline, purchaseEvent({ orderId: 'order-evolving-2', paymentStatus: 'paid' }));
 
     const itemsForThisOrder = orderItems.filter((oi) => oi.externalProductId === 'p1');
-    // Exactly one line item was ever created for this order — the second
-    // (update) pass never re-creates OrderItems, by design (§12).
     assert.equal(itemsForThisOrder.length, 1);
   });
 
@@ -147,9 +138,6 @@ describe('Order idempotency (websiteId + externalOrderId)', () => {
     const pipeline = setupMockCommercePipeline(t);
     const { orders, orderItems, events } = pipeline;
 
-    // Two DIFFERENT events (different eventIds), same externalOrderId —
-    // ingest both first (independent, no race there), then process both
-    // jobs concurrently to actually exercise the race in order.service.js.
     const [resA, resB] = await Promise.all([
       fetch(`${baseUrl}/api/collect`, {
         method: 'POST',
@@ -172,7 +160,6 @@ describe('Order idempotency (websiteId + externalOrderId)', () => {
     ]);
 
     assert.equal(orders.size, 1);
-    // Exactly one of the two competing requests created the items.
     const items = orderItems.filter((oi) => String(oi.orderId) === String(orders.get(`${WEBSITE_ID}:race-order`)._id));
     assert.equal(items.length, 1);
   });
@@ -243,7 +230,6 @@ describe('Order status / validation', () => {
   test('a consistent full breakdown is accepted and total is used as sent', async (t) => {
     const pipeline = setupMockCommercePipeline(t);
     const { orders } = pipeline;
-    // 1000 - 200 + 100 + 50 = 950
     const { res } = await post(pipeline, purchaseEvent({ subtotal: 1000, discount: 200, shipping: 100, tax: 50, total: 950 }));
     assert.equal(res.status, 202);
     assert.equal(orders.get(`${WEBSITE_ID}:order-1`).total, 95000);
@@ -251,7 +237,7 @@ describe('Order status / validation', () => {
 
   test('a partial breakdown (not all five fields) is accepted without forced reconciliation', async (t) => {
     const pipeline = setupMockCommercePipeline(t);
-    const { res } = await post(pipeline, purchaseEvent({ discount: 50 })); // only discount, no subtotal/shipping/tax/total
+    const { res } = await post(pipeline, purchaseEvent({ discount: 50 }));
     assert.equal(res.status, 202);
   });
 });

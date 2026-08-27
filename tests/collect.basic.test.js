@@ -59,7 +59,7 @@ describe('POST /api/collect — supported event types', () => {
     assert.equal(res.status, 202);
     assert.equal(body.success, true);
     assert.equal(body.data.accepted, true);
-    assert.match(body.data.eventId, /^[0-9a-f-]{36}$/); // server-generated UUID
+    assert.match(body.data.eventId, /^[0-9a-f-]{36}$/);
     assert.equal(captured.eventName, 'page_view');
     assert.equal(captured.data, undefined);
   });
@@ -143,6 +143,6 @@ describe('POST /api/collect — supported event types', () => {
     assert.equal(body.data.accepted, true);
     assert.equal(captured.data.orderId, 'ORDER-123');
     assert.equal(captured.data.revenue, 170000);
-    assert.equal(captured.eventVersion, '1'); // default eventVersion
+    assert.equal(captured.eventVersion, '1');
   });
 });

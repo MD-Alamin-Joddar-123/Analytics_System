@@ -12,9 +12,6 @@ const EVENT_ID_REGEX = /^[A-Za-z0-9_-]{1,128}$/;
 const MAX_STRING_LENGTH = 500;
 const MAX_URL_LENGTH = 2048;
 const MAX_ID_LENGTH = 128;
-// Shared cap for every customer-supplied external commerce id
-// (productId, orderId, cartId, checkoutId) — Phase 6 §16: never assumed
-// numeric, just a normalized string with a reasonable length limit.
 const EXTERNAL_ID_MAX_LENGTH = 200;
 const MAX_ITEMS = 100;
 const MAX_MONEY_AMOUNT = 1_000_000_000;
@@ -22,9 +19,6 @@ const MAX_QUANTITY = 100_000;
 const MAX_EVENT_VERSION_LENGTH = 20;
 const MAX_LANGUAGE_LENGTH = 35;
 const MAX_SCREEN_DIMENSION = 20_000;
-// Reconciliation tolerance for order/checkout totals (Phase 6 §18),
-// expressed in major currency units (e.g. 0.01 = one cent/paisa) to
-// absorb ordinary rounding — not a loophole for genuinely wrong totals.
 const TOTAL_RECONCILIATION_TOLERANCE = 0.01;
 
 function isPlainObject(value) {
@@ -43,7 +37,6 @@ function validationError(message) {
   return ApiError.badRequest(message, ErrorCodes.VALIDATION_ERROR);
 }
 
-// --- Field-level helpers -----------------------------------------------
 
 function readOptionalString(body, field, maxLength) {
   const value = body[field];
@@ -63,7 +56,6 @@ function readOptionalUrl(body, field, maxLength) {
   const value = readOptionalString(body, field, maxLength);
   if (value === undefined) return undefined;
   try {
-    // eslint-disable-next-line no-new
     new URL(value);
   } catch {
     throw validationError(`${field} must be a valid absolute URL.`);
@@ -112,9 +104,6 @@ function readProductId(value) {
   return value.trim();
 }
 
-// Optional external-id-shaped fields within `data` (cartId, checkoutId) —
-// distinct from readOptionalString, which operates on the top-level body,
-// not a nested `data` object.
 function readOptionalDataId(value, fieldName) {
   if (value === undefined || value === null) return undefined;
   if (!isNonEmptyString(value) || value.trim().length > EXTERNAL_ID_MAX_LENGTH) {
@@ -136,12 +125,6 @@ function readOptionalPaymentStatus(value) {
   return value;
 }
 
-// Order/checkout total validation policy (Phase 6 §18): only reconciled
-// when the client supplies a FULL explicit breakdown (all five fields,
-// including `total` itself) — a partial breakdown (e.g. just `discount`)
-// is accepted without cross-checking, since there's nothing reliable to
-// check it against. When all five are present, subtotal - discount +
-// shipping + tax must equal total within a small rounding tolerance.
 function validateTotalsConsistency({ subtotal, discount, shipping, tax, total }) {
   if ([subtotal, discount, shipping, tax, total].some((value) => value === undefined)) {
     return;
@@ -185,16 +168,8 @@ function readItems(rawItems) {
   return rawItems.map(readItem);
 }
 
-// --- Per-event `data` validators ----------------------------------------
-// Each returns ONLY the fields it explicitly names — nothing from the raw
-// client `data` object is ever copied through unexamined. This is the
-// primary defense against a client (accidentally or otherwise) sending
-// sensitive fields like passwords or card numbers: there is structurally
-// no code path that would persist an unrecognized key.
 
 function validatePageViewData() {
-  // page_view carries no ecommerce data; any `data` the client sends is
-  // intentionally ignored rather than persisted.
   return undefined;
 }
 
@@ -208,10 +183,6 @@ function validateProductViewData(raw) {
   return result;
 }
 
-// add_to_cart: productId/price/quantity required — unchanged from Phase 4.
-// cartId is new and optional (Phase 6 §23): present, it links the action
-// to a Cart/CartItem; absent, the event is still accepted, just unlinked
-// (same graceful-degradation pattern as a missing anonymousId in Phase 5).
 function validateAddToCartData(raw) {
   const data = isPlainObject(raw) ? raw : {};
   const result = {
@@ -227,11 +198,6 @@ function validateAddToCartData(raw) {
   return result;
 }
 
-// remove_from_cart: productId/quantity required (unchanged). `price` was
-// required in Phase 4; Phase 6's contract for this event doesn't include
-// it (§23), so it's relaxed to optional here — a strictly backward-
-// compatible change (any payload that satisfied the old, stricter rule
-// still satisfies this one).
 function validateRemoveFromCartData(raw) {
   const data = isPlainObject(raw) ? raw : {};
   const result = {
@@ -247,11 +213,6 @@ function validateRemoveFromCartData(raw) {
   return result;
 }
 
-// checkout: items/cartValue/currency remain required, unchanged from
-// Phase 4 — existing valid payloads keep working. checkoutId, cartId, and
-// a full financial breakdown (subtotal/discount/shipping/tax/total) are
-// new and optional (Phase 6 §23). `total` defaults to `cartValue` when not
-// explicitly supplied — they represent the same concept.
 function validateCheckoutData(raw) {
   const data = isPlainObject(raw) ? raw : {};
   const result = {
@@ -281,10 +242,6 @@ function validateCheckoutData(raw) {
   return result;
 }
 
-// purchase: orderId/revenue/currency/items remain required, unchanged
-// from Phase 4. checkoutId, a full financial breakdown, and paymentStatus
-// are new and optional (Phase 6 §23). `total` defaults to `revenue` when
-// not explicitly supplied.
 function validatePurchaseData(raw) {
   const data = isPlainObject(raw) ? raw : {};
   if (!isNonEmptyString(data.orderId) || data.orderId.trim().length > EXTERNAL_ID_MAX_LENGTH) {
@@ -329,7 +286,6 @@ const DATA_VALIDATORS = {
   purchase: validatePurchaseData,
 };
 
-// --- Top-level middleware ------------------------------------------------
 
 export function validateCollectEvent(req, res, next) {
   try {
@@ -381,9 +337,6 @@ export function validateCollectEvent(req, res, next) {
     const url = readOptionalUrl(body, 'url', MAX_URL_LENGTH);
     const path = readOptionalString(body, 'path', MAX_STRING_LENGTH);
     const title = readOptionalString(body, 'title', MAX_STRING_LENGTH);
-    // referrer is intentionally NOT format-validated as a URL: real
-    // browsers/SDKs send non-URL referrer values too (empty string for
-    // direct traffic, custom app schemes, etc.) — only length is capped.
     const referrer = readOptionalString(body, 'referrer', MAX_URL_LENGTH);
     const anonymousId = readOptionalString(body, 'anonymousId', MAX_ID_LENGTH);
     const sessionId = readOptionalString(body, 'sessionId', MAX_ID_LENGTH);

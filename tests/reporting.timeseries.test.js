@@ -38,7 +38,6 @@ describe('GET /api/reports/:websiteId/timeseries', () => {
     assert.equal(res.status, 200);
     assert.equal(body.data.granularity, 'day');
     assert.equal(body.data.points.length, 3);
-    // Bucket ordering (§2/§19): ascending by date, matching seed order 10/11/12.
     assert.deepEqual(
       body.data.points.map((p) => p.pageViews),
       [10, 20, 30]
@@ -50,7 +49,7 @@ describe('GET /api/reports/:websiteId/timeseries', () => {
     const pipeline = setupMockReportingPipeline(t);
     pipeline.seedBucket({ granularity: 'hour', bucket: new Date('2026-08-10T09:00:00.000Z'), pageViews: 5 });
     pipeline.seedBucket({ granularity: 'hour', bucket: new Date('2026-08-10T10:00:00.000Z'), pageViews: 7 });
-    pipeline.seedBucket({ granularity: 'day', bucket: new Date('2026-08-10T00:00:00.000Z'), pageViews: 999 }); // must not leak in
+    pipeline.seedBucket({ granularity: 'day', bucket: new Date('2026-08-10T00:00:00.000Z'), pageViews: 999 });
 
     const res = await get(
       `/api/reports/${pipeline.websiteId}/timeseries?from=2026-08-10T00:00:00.000Z&to=2026-08-11T00:00:00.000Z&granularity=hour`,

@@ -74,7 +74,6 @@ describe('GET /api/reports/:websiteId/sessions', () => {
   test('paginates and sorts', async (t) => {
     const pipeline = setupMockObservabilityPipeline(t);
     for (let i = 0; i < 3; i += 1) {
-      // eslint-disable-next-line no-await-in-loop
       await postAndProcess(baseUrl, pageView({ anonymousId: `anon-${i}`, sessionId: `sess-${i}` }), pipeline);
     }
     const res = await get(`/api/reports/${pipeline.websiteId}/sessions?page=1&limit=2&sort=eventCount&order=asc`, pipeline.token);
@@ -123,7 +122,6 @@ describe('GET /api/reports/:websiteId/sessions/:sessionId', () => {
       body.data.timeline.map((e) => e.eventName),
       ['page_view', 'product_view', 'add_to_cart']
     );
-    // chronological (ascending timestamp)
     const timestamps = body.data.timeline.map((e) => new Date(e.timestamp).getTime());
     assert.ok(timestamps[0] <= timestamps[1] && timestamps[1] <= timestamps[2]);
 
@@ -131,7 +129,6 @@ describe('GET /api/reports/:websiteId/sessions/:sessionId', () => {
     assert.equal(addToCart.data.productId, 'p1');
     assert.equal(addToCart.data.quantity, 2);
     assert.equal(addToCart.data.price, 20);
-    // never arbitrary/unlisted fields
     for (const forbidden of ['password', 'passwordHash', 'cardNumber', 'cvv', 'token', 'authorization']) {
       assert.equal(Object.prototype.hasOwnProperty.call(addToCart.data, forbidden), false);
     }

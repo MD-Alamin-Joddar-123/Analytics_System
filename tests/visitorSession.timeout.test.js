@@ -35,7 +35,6 @@ describe('Session inactivity timeout', () => {
     await post(pipeline, { websiteId: WEBSITE_ID, event: 'page_view', anonymousId: 'anon-1', sessionId: 'sess-1' });
     const original = sessions.get(`${WEBSITE_ID}:sess-1`);
 
-    // Backdate lastActivityAt to just inside the window (timeout - 1 minute).
     original.lastActivityAt = new Date(Date.now() - TIMEOUT_MS + 60_000);
 
     await post(pipeline, { websiteId: WEBSITE_ID, event: 'page_view', anonymousId: 'anon-1', sessionId: 'sess-1' });
@@ -50,25 +49,20 @@ describe('Session inactivity timeout', () => {
 
     await post(pipeline, { websiteId: WEBSITE_ID, event: 'page_view', anonymousId: 'anon-1', sessionId: 'sess-1' });
     const original = sessions.get(`${WEBSITE_ID}:sess-1`);
-    const originalLastActivity = new Date(Date.now() - TIMEOUT_MS - 60_000); // 1 minute past expiry
+    const originalLastActivity = new Date(Date.now() - TIMEOUT_MS - 60_000);
     original.lastActivityAt = originalLastActivity;
 
     await post(pipeline, { websiteId: WEBSITE_ID, event: 'page_view', anonymousId: 'anon-1', sessionId: 'sess-1' });
 
-    // The original session is marked ended and untouched otherwise.
     assert.equal(original.endedAt.getTime(), originalLastActivity.getTime());
     assert.equal(original.eventCount, 1);
 
-    // A second, distinct session document now exists for the same visitor,
-    // under a different (server-generated) sessionId — the string
-    // "sess-1" is permanently tied to the ended session.
     assert.equal(sessions.size, 2);
     const newSession = [...sessions.values()].find((s) => s !== original);
     assert.notEqual(newSession.sessionId, 'sess-1');
     assert.equal(newSession.eventCount, 1);
     assert.equal(String(newSession.visitorId), String(original.visitorId));
 
-    // The visitor's sessionCount reflects two genuinely distinct sessions.
     const visitor = visitors.get(`${WEBSITE_ID}:anon-1`);
     assert.equal(visitor.sessionCount, 2);
     assert.equal(visitor.lastSessionId, newSession.sessionId);

@@ -2,12 +2,6 @@ import { reportingService } from '../services/analytics/reporting.service.js';
 import { observabilityService } from '../services/analytics/observability.service.js';
 import { sendSuccess } from '../utils/apiResponse.js';
 
-// Thin by design (Phase 9 §20): every controller here does exactly three
-// things — read what the middleware chain already validated/resolved
-// (req.website, req.reportQuery, req.pagination, req.sort, req.params),
-// call the one matching reporting.service.js function, and send the
-// response. No MongoDB query, no formula, no formatting decision lives in
-// this file.
 
 export async function getOverview(req, res, next) {
   try {
@@ -81,11 +75,6 @@ export async function getRevenueReport(req, res, next) {
   }
 }
 
-// --- Phase 12.5: Tracking Observability ------------------------------------
-// Same thin-controller convention as above — every piece of parsing/
-// validation already happened in middleware (req.website, req.sort,
-// req.pagination, req.activityRange, req.eventTypeFilter,
-// req.activityIdFilters); these just forward to observabilityService.
 
 export async function listVisitors(req, res, next) {
   try {

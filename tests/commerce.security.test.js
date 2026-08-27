@@ -39,8 +39,6 @@ describe('Commerce entities — multi-tenant isolation and injection resistance'
         revenue: 10,
         currency: 'USD',
         items: [{ productId: 'p1', price: 10, quantity: 1 }],
-        // None of these are recognized fields — the validator's allow-list
-        // never reads them, so they can't reach any document.
         visitorId: 'hacked-visitor-id',
         sessionObjectId: 'hacked-session-id',
         ownerId: 'hacked-owner-id',
@@ -50,11 +48,9 @@ describe('Commerce entities — multi-tenant isolation and injection resistance'
 
     const order = orders.get(`${WEBSITE_ID}:order-1`);
     assert.notEqual(String(order.visitorId), 'hacked-visitor-id');
-    assert.notEqual(order._id, 'hacked-mongo-id'); // _id is always server-assigned
+    assert.notEqual(order._id, 'hacked-mongo-id');
     assert.ok(order._id);
     assert.equal('ownerId' in order, false);
-    // Product/Cart untouched by this purchase (no cartId sent) — just
-    // confirms the injected fields didn't leak anywhere unexpected either.
     assert.equal(products.size, 1);
     assert.equal(carts.size, 0);
   });
@@ -104,7 +100,6 @@ describe('Commerce entities — multi-tenant isolation and injection resistance'
       data: { orderId: 'iso-order', revenue: 10, currency: 'USD', items: [{ productId: 'p1', price: 10, quantity: 1 }] },
     });
 
-    // Querying under the OTHER website must never find Website A's order.
     const crossLookup = await orderRepository.findByWebsiteAndExternalOrderId(OTHER_WEBSITE, 'iso-order');
     assert.equal(crossLookup, null);
   });

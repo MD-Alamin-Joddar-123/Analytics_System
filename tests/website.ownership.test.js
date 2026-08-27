@@ -6,12 +6,6 @@ import { websiteRepository } from '../src/repositories/website.repository.js';
 import { signAuthToken } from '../src/utils/jwt.js';
 import { makeFakeWebsite, makeFakeUserRecord } from './helpers/fakeWebsite.js';
 
-// This suite simulates a single persisted "Website A" (owned by User A) in
-// an in-memory store, and drives all three owner-scoped operations through
-// it as User B — a closer approximation of real DB ownership filtering than
-// per-test ad-hoc mocks, matching the explicit scenario in the Phase 3 spec:
-// "User A creates Website A. User B attempts GET / PATCH / DELETE — all
-// must fail safely."
 
 const OWNER_A_ID = '507f1f77bcf86cd799439011';
 const OWNER_B_ID = '507f191e810c19729de860ea';
@@ -66,7 +60,7 @@ function mockOwnershipEnforcingRepository(t) {
 describe('Cross-user ownership isolation (User A owns Website A, User B attacks it)', () => {
   test('User B cannot GET Website A', async (t) => {
     store = makeFakeWebsite({ _id: WEBSITE_A_ID, ownerId: OWNER_A_ID, name: 'Website A' });
-    store.id = WEBSITE_A_ID; // convenience for the mock's comparison above
+    store.id = WEBSITE_A_ID;
     mockOwnershipEnforcingRepository(t);
 
     const res = await fetch(`${baseUrl}/api/websites/${WEBSITE_A_ID}`, {
@@ -78,7 +72,6 @@ describe('Cross-user ownership isolation (User A owns Website A, User B attacks 
     assert.equal(body.error.code, 'WEBSITE_NOT_FOUND');
     assert.ok(!JSON.stringify(body).includes('Website A'));
 
-    // Sanity check: the owner CAN see it.
     const ownerRes = await fetch(`${baseUrl}/api/websites/${WEBSITE_A_ID}`, {
       headers: { Authorization: `Bearer ${tokenA}` },
     });
@@ -99,7 +92,7 @@ describe('Cross-user ownership isolation (User A owns Website A, User B attacks 
 
     assert.equal(res.status, 404);
     assert.equal(body.error.code, 'WEBSITE_NOT_FOUND');
-    assert.equal(store.name, 'Website A'); // untouched
+    assert.equal(store.name, 'Website A');
   });
 
   test('User B cannot DELETE (archive) Website A', async (t) => {
@@ -115,6 +108,6 @@ describe('Cross-user ownership isolation (User A owns Website A, User B attacks 
 
     assert.equal(res.status, 404);
     assert.equal(body.error.code, 'WEBSITE_NOT_FOUND');
-    assert.equal(store.status, 'active'); // untouched
+    assert.equal(store.status, 'active');
   });
 });

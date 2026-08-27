@@ -15,22 +15,8 @@ describe('Queue configuration', () => {
     assert.notEqual(buildEventJobId('site-a', 'evt-1'), buildEventJobId('site-a', 'evt-2'));
   });
 
-  // A real, previously-shipped bug: `${websiteId}:${eventId}` (exactly one
-  // colon) is REJECTED by BullMQ's own Job.validateOptions — it only
-  // special-cases 0 or exactly 2 colons (reserved for its internal
-  // repeatable-job id format). Every FakeQueue-based test below is
-  // deliberately blind to this, by design (it never touches real BullMQ),
-  // which is exactly how this shipped undetected — the queue is ALSO
-  // always mocked at the eventQueueService boundary in every collect.*
-  // test. This test exercises BullMQ's REAL Job validation directly
-  // (proven to run synchronously, before any Redis I/O — see the comment
-  // below) specifically so this class of bug can't silently return.
   test('the real jobId format is never rejected by BullMQ\'s own Job validation (regression)', async () => {
     const { Queue } = await import('bullmq');
-    // A connection target that's guaranteed unreachable (port 1) with no
-    // retries — jobId validation happens BEFORE any connection attempt, so
-    // this test never needs live Redis; it only needs to distinguish
-    // "rejected by validation" from "failed to connect" (expected here).
     const queue = new Queue('validation-only-test-queue', {
       connection: { host: '127.0.0.1', port: 1, lazyConnect: true, maxRetriesPerRequest: 0, retryStrategy: () => null },
     });
@@ -39,7 +25,7 @@ describe('Queue configuration', () => {
         () => queue.add('process-event', {}, { jobId: buildEventJobId('a1b2c3d4e5f60718', 'evt-1') }),
         (error) => {
           assert.notEqual(error.message, 'Custom Id cannot contain :', 'buildEventJobId must never produce a jobId BullMQ rejects');
-          return true; // any OTHER rejection (a connection error, expected here) is fine
+          return true;
         }
       );
     } finally {
@@ -70,23 +56,14 @@ describe('Queue configuration', () => {
   });
 });
 
-// A minimal in-memory stand-in for BullMQ's relevant Queue.add(name, data,
-// {jobId}) dedup semantics — demonstrates the CONCEPT buildEventJobId
-// exists to support (queue-level idempotent job submission, §16), fully
-// isolated from real Redis/BullMQ. The actual eventQueueService (backed by
-// a real BullMQ Queue) is exercised indirectly through every collect.*
-// test that mocks it at the enqueueEventProcessing boundary — this test
-// documents and verifies the underlying assumption those mocks stand in
-// for: that adding a job with an already-used jobId does not create a
-// second job.
 class FakeQueue {
   constructor() {
-    this.jobs = new Map(); // jobId -> job
+    this.jobs = new Map();
   }
 
   add(name, data, { jobId }) {
     if (this.jobs.has(jobId)) {
-      return this.jobs.get(jobId); // BullMQ: adding a duplicate jobId is a no-op, returns the existing job
+      return this.jobs.get(jobId);
     }
     const job = { id: jobId, name, data };
     this.jobs.set(jobId, job);

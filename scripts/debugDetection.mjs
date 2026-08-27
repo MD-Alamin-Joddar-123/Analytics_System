@@ -1,8 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { detectProductConfig } from '../src/services/trackingConfig/detectionEngine.js';
 
-// Usage: node scripts/debugDetection.mjs <url-or-local-html-path>
-// Set DETECTION_DEBUG=1 to see which classification rule evaluated how.
+
 const target = process.argv[2] ?? 'https://online-fish-market-six.vercel.app/products/rui/';
 const html = target.endsWith('.html')
   ? readFileSync(target, 'utf8')

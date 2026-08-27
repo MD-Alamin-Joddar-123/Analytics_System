@@ -13,7 +13,6 @@ export const orderRepository = {
     return Order.findByIdAndUpdate(id, { $set: updates }, { new: true });
   },
 
-  // --- Phase 12.5: Tracking Observability (read-only listing/detail) ---
 
   async findManyByWebsite(websiteId, { sortField, sortOrder, skip, limit }) {
     return Order.find({ websiteId })

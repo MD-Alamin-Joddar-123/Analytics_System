@@ -39,10 +39,8 @@ describe('Reporting API — authentication', () => {
       'revenue',
     ];
     for (const endpoint of endpoints) {
-      // eslint-disable-next-line no-await-in-loop
       const res = await get(`/api/reports/${pipeline.websiteId}/${endpoint}?${RANGE}`);
       assert.equal(res.status, 401, endpoint);
-      // eslint-disable-next-line no-await-in-loop
       const body = await res.json();
       assert.equal(body.error.code, 'AUTH_REQUIRED', endpoint);
     }
@@ -60,8 +58,6 @@ describe('Reporting API — website ownership (§9)', () => {
     const pipeline = setupMockReportingPipeline(t, { ownerId: 'owner-A' });
     pipeline.seedBucket({ bucket: new Date('2026-08-10T00:00:00.000Z'), pageViews: 12345 });
     const attackerToken = signAuthToken({ _id: 'owner-B', role: 'user' });
-    // owner-B must still resolve as a real, valid authenticated user for
-    // this to be a meaningful cross-OWNERSHIP test, not just a bad-auth one.
     t.mock.method((await import('../src/repositories/user.repository.js')).userRepository, 'findById', async (id) => {
       if (id === 'owner-A' || id === 'owner-B') return { _id: id, email: `${id}@x.com`, role: 'user', status: 'active' };
       return null;
@@ -72,9 +68,8 @@ describe('Reporting API — website ownership (§9)', () => {
 
     assert.equal(res.status, 404);
     assert.equal(body.error.code, 'WEBSITE_NOT_FOUND');
-    assert.equal(JSON.stringify(body).includes('12345'), false); // no analytics data leaked
+    assert.equal(JSON.stringify(body).includes('12345'), false);
 
-    // Sanity: the real owner CAN see it.
     const ownerRes = await get(`/api/reports/${pipeline.websiteId}/overview?${RANGE}`, pipeline.token);
     assert.equal(ownerRes.status, 200);
   });
@@ -87,8 +82,6 @@ describe('Reporting API — website ownership (§9)', () => {
       return null;
     });
 
-    // Attempting to smuggle ownership via a query param does nothing —
-    // there is no code path that reads req.query.ownerId at all.
     const res = await get(`/api/reports/${pipeline.websiteId}/overview?${RANGE}&ownerId=owner-A`, attackerToken);
     assert.equal(res.status, 404);
   });
@@ -111,7 +104,6 @@ describe('Reporting API — website ownership (§9)', () => {
 describe('Reporting API — cross-website analytics isolation (§10, HTTP-level)', () => {
   test('a user who owns Website A cannot read Website B\'s analytics even by guessing its websiteId', async (t) => {
     const pipeline = setupMockReportingPipeline(t, { websiteId: 'aaaaaaaaaaaaaaaa', ownerId: 'owner-A' });
-    // Website B exists but is owned by someone else — never returned to owner-A.
     pipeline.websites.set('bbbbbbbbbbbbbbbb', { websiteId: 'bbbbbbbbbbbbbbbb', ownerId: 'owner-B', currency: 'EUR', status: 'active' });
 
     const res = await get('/api/reports/bbbbbbbbbbbbbbbb/overview?' + RANGE, pipeline.token);
@@ -179,7 +171,6 @@ describe('Reporting API — performance: reads only aggregation collections (§1
 
     const endpoints = ['overview', 'timeseries', 'products', 'products/p1', 'conversion', 'cart-checkout', 'revenue'];
     for (const endpoint of endpoints) {
-      // eslint-disable-next-line no-await-in-loop
       const res = await get(`/api/reports/${pipeline.websiteId}/${endpoint}?${RANGE}`, pipeline.token);
       assert.equal(res.status, 200, `${endpoint} should succeed without touching Event`);
     }

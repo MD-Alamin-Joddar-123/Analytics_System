@@ -4,15 +4,6 @@ import { createApp } from '../src/app.js';
 import { setupMockCommercePipeline } from './helpers/mockCommercePipeline.js';
 import { postAndProcess } from './helpers/postAndProcess.js';
 
-// End-to-end wiring proof (Phase 8 §19/§20): a real HTTP POST /api/collect
-// -> ingestion -> worker's processEvent -> commerce resolution -> analytics
-// aggregation, for a realistic funnel, asserted against the resulting
-// AnalyticsBucket/ProductAnalyticsBucket documents. Everything below this
-// level (mapping correctness, idempotency, concurrency) already has
-// dedicated unit coverage in analyticsMetrics.test.js and
-// analyticsAggregation.service.test.js — this file exists specifically to
-// prove the pieces are actually wired together correctly end-to-end, not
-// to re-test their internals.
 
 const WEBSITE_ID = 'a1b2c3d4e5f60718';
 
@@ -113,7 +104,6 @@ describe('Analytics end-to-end — full funnel through the real HTTP + worker pi
     assert.equal(dayBucket.netRevenueMinor, 85000);
     assert.equal(dayBucket.currency, 'USD');
 
-    // Product-level rollup for the same funnel.
     const productDayBucket = pipeline.analytics.productBuckets.get(`${WEBSITE_ID}:p1:day:${dayIso}`);
     assert.equal(productDayBucket.productViews, 1);
     assert.equal(productDayBucket.addToCarts, 1);
@@ -135,9 +125,6 @@ describe('Analytics end-to-end — full funnel through the real HTTP + worker pi
     };
 
     await post(pipeline, purchase);
-    // Second submission with the identical client-supplied eventId — the
-    // Phase 7 ingestion layer treats this as a duplicate and re-enqueues
-    // the SAME Event for (re-)processing rather than creating a new one.
     await post(pipeline, purchase);
 
     const dayBucket = dayBucketFor(pipeline, dayIso);
@@ -148,9 +135,6 @@ describe('Analytics end-to-end — full funnel through the real HTTP + worker pi
   test('two different websites accumulate completely independent analytics for the same product id', async (t) => {
     const WEBSITE_B = 'bbbbccccddddeeee';
     const pipeline = setupMockCommercePipeline(t, { websiteId: WEBSITE_ID });
-    // A second website needs its own website lookup mocked — reuse the
-    // same pipeline's other mocks (visitor/session/commerce/analytics),
-    // only the website resolution needs a second entry.
     const { websiteRepository } = await import('../src/repositories/website.repository.js');
     const { makeFakeWebsite } = await import('./helpers/fakeWebsite.js');
     const originalFind = websiteRepository.findByWebsiteId;
